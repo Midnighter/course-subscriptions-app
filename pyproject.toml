@@ -1,0 +1,232 @@
+################################################################################
+# Build Configuration
+################################################################################
+
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling", "hatch-vcs"]
+
+################################################################################
+# Project Configuration
+################################################################################
+
+[project]
+name = "TODO"
+dynamic = ["version"]
+description = ""
+authors = [{ name = "", email = "" }]
+license = "Apache-2.0"
+readme = { "file" = "README.md", "content-type" = "text/markdown" }
+requires-python = ">=3.14"
+# Please consult https://pypi.org/classifiers/ for a full list.
+classifiers = [
+    "Natural Language :: English",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.14",
+    "Typing :: Typed",
+]
+keywords = []
+dependencies = [
+    "eventsourcing[pydantic,postgres,umadb] ~=10.0.0a7",
+    "psycopg[binary] ~=3.3",
+    "fastapi",
+    "opentelemetry-api",
+]
+
+[project.optional-dependencies]
+telemetry = [
+    "opentelemetry-sdk",
+    "opentelemetry-instrumentation-fastapi",
+    "opentelemetry-exporter-otlp-proto-grpc",
+]
+
+[dependency-groups]
+style = ["pydoclint", "ruff"]
+types = ["pyrefly"]
+docs = [
+    "mkdocs-material ~=9.5",
+    "mkdocstrings[python] ~=1.0",
+    "mkdocs-awesome-pages-plugin ~=2.9",
+    "mike ~=2.1",
+]
+tests = ["pytest", "pytest-cov", "pytest-raises"]
+integration = [{include-group = "tests"}, "httpx2"]
+
+################################################################################
+# Tool Configuration
+################################################################################
+
+[tool.hatch.build]
+only-packages = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/TODO"]
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/TODO/_version.py"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["raises"]
+
+[tool.coverage.paths]
+source = ["src/TODO", "*/site-packages/TODO"]
+
+[tool.coverage.run]
+branch = true
+parallel = true
+omit = ["src/TODO/_version.py"]
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover"]
+precision = 2
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "D107",   # 'Missing docstring in __init__' ignored because pydoclint wants us to document the class instead.
+    "D203",   # '1 blank line required before class docstring' ignored because we want no blank line.
+    "D212",   # 'Multi-line docstring summary should start at the first line' ignored because we want the summary to start on the second line.
+    "D407",   # 'Missing dashed underline after section' ignored because Google style docstrings don't underline.
+    "ANN002", # 'Missing type annotation for {*args} in method'.
+    "ANN003", # 'Missing type annotation for {*kwargs} in method'.
+]
+exclude = ["src/TODO/_version.py"]
+
+[tool.ruff.lint.extend-per-file-ignores]
+"__init__.py" = [
+    "E401", # 'Multiple imports on one line'
+    "E402", # 'Module level import not at top of file'
+    "F401", # 'Imported but unused'
+    "I001", # 'Import block is un-sorted or un-formatted' ignored because we may have to import in a particular, not-alphabetical order.
+]
+"tests/**/*.py" = [
+    "S101",    # 'Use of assert detected' ignored because we are using pytest.
+    "INP001",  # 'Insecure input' ignored because we are testing.
+    "ANN201",  # 'Missing type annotation for {return}' ignored because all tests return `None`.
+    "PLR2004", # Magic numbers are okay in tests.
+]
+
+[tool.ruff.lint.isort]
+case-sensitive = true
+known-first-party = ["src", "TODO"]
+
+[tool.pydoclint]
+style = "google"
+arg-type-hints-in-docstring = false
+check-return-types = false
+check-yield-types = false
+exclude = "_version.py"
+
+################################################################################
+# Hatch Environments
+################################################################################
+
+[tool.hatch.env]
+requires = ["hatch-pip-compile"]
+
+[tool.hatch.envs.default]
+description = """
+Base environment with default configuration values.
+
+All environments inheriting from the default also inherit the configuration values set
+here.
+"""
+type = "pip-compile"
+lock-filename = "requirements/requirements-{env_name}.txt"
+pip-compile-constraint = "dev"
+pip-compile-hashes = true
+pip-compile-resolver = "uv"
+pip-compile-installer = "uv"
+features = []
+
+[tool.hatch.envs.no-install]
+description = """A base environment for use cases that do not install the project."""
+skip-install = true
+features = []
+
+[tool.hatch.envs.dev]
+description = """Development environment."""
+dependency-groups = ["style", "types", "docs", "tests", "integration"]
+extra-dependencies = ["pre-commit"]
+features = ["telemetry"]
+
+[tool.hatch.envs.dev.env-vars]
+PYTHONDEVMODE = "1"
+
+[tool.hatch.envs.production]
+description = """Production environment."""
+lock-filename = "requirements.txt"
+features = ["telemetry"]
+
+[tool.hatch.envs.style]
+description = """Check the style of the codebase."""
+template = "no-install"
+dependency-groups = ["style"]
+
+[tool.hatch.envs.style.scripts]
+docstrings = ["pydoclint src", "pydoclint tests"]
+code = "ruff check {args}"
+format = "ruff format {args}"
+fix = "ruff check --fix {args}"
+check = ["docstrings", "code"]
+
+[tool.hatch.envs.audit]
+description = """Check dependencies for security vulnerabilities."""
+extra-dependencies = ["pip-audit"]
+
+[tool.hatch.envs.audit.scripts]
+check = ["pip-audit"]
+
+[tool.hatch.envs.types]
+description = """Check the static types of the codebase."""
+dependency-groups = ["types"]
+features = ["telemetry"]
+
+[tool.hatch.envs.types.scripts]
+check = ["pyrefly check src/TODO"]
+
+[tool.hatch.envs.docs]
+description = """Build or serve the documentation."""
+dependency-groups = ["docs"]
+
+[tool.hatch.envs.docs.scripts]
+build = "mkdocs build {args:--clean --strict}"
+serve = "mkdocs serve {args}"
+deploy = "mike deploy {args}"
+openapi = '''python -c "import json, pathlib; from TODO.main import create_app; pathlib.Path('docs/openapi.json').write_text(json.dumps(create_app().openapi(), indent=2, sort_keys=True))"'''
+
+[tool.hatch.envs.unit-tests]
+description = """Run the unit tests."""
+dependency-groups = ["tests"]
+
+[tool.hatch.envs.unit-tests.scripts]
+run = "pytest {args:--cov=TODO --cov-report=term-missing} {root}/tests/unit"
+
+[tool.hatch.envs.acceptance-tests]
+description = """Run the acceptance tests."""
+dependency-groups = ["tests"]
+
+[tool.hatch.envs.acceptance-tests.scripts]
+run = "pytest {args:--cov=TODO --cov-report=term-missing} {root}/tests/acceptance"
+
+[tool.hatch.envs.integration-tests]
+description = """Run the integration tests."""
+dependency-groups = ["integration"]
+
+[tool.hatch.envs.integration-tests.scripts]
+run = "pytest {args:--cov=TODO --cov-report=term-missing} {root}/tests/integration"
+
+[tool.hatch.envs.documentation-tests]
+description = """Run the documentation tests."""
+dependency-groups = ["tests"]
+extra-dependencies = ["mktestdocs"]
+
+[tool.hatch.envs.documentation-tests.scripts]
+run = "pytest {args:--cov=TODO --cov-report=term-missing} {root}/tests/documentation"

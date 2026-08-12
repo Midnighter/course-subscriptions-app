@@ -1,0 +1,70 @@
+repos:
+  - repo: local
+    hooks:
+      - id: hatch-style-code
+        name: Hatch style code
+        entry: hatch run style:code
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: hatch-style-docstrings
+        name: Hatch docstrings
+        entry: hatch run style:docstrings
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: hatch-types-check
+        name: Hatch types check
+        entry: hatch run types:check
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: hatch-docs-openapi
+        name: Hatch OpenAPI spec
+        entry: hatch run docs:openapi
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: hatch-docs-build
+        name: Hatch docs build
+        entry: hatch run docs:build
+        language: system
+        pass_filenames: false
+
+      - id: hatch-unit-tests
+        name: Hatch unit tests
+        entry: hatch run unit-tests:run
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: hatch-acceptance-tests
+        name: Hatch acceptance tests
+        entry: hatch run acceptance-tests:run
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: hatch-integration-tests
+        name: Hatch integration tests
+        entry: hatch run integration-tests:run
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: hatch-documentation-tests
+        name: Hatch documentation tests
+        entry: hatch run documentation-tests:run
+        language: system
+        pass_filenames: false
+
+      - id: hatch-audit-check
+        name: Hatch audit check
+        entry: hatch run audit:check
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
