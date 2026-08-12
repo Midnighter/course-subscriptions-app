@@ -1,7 +1,7 @@
 {
   "id": "0aaedf9d-e5d0-4bc6-b2d2-d3f6e6dd1945",
   "title": "Subscribe Student",
-  "status": "Planned",
+  "status": "Done",
   "sliceType": "STATE_CHANGE",
   "chapter": "Course Subscriptions",
   "context": "Course Subscriptions",

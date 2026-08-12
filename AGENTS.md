@@ -86,3 +86,13 @@ detail belongs in `progress.txt`, not here.
   slice id you picked from `index.json` before trusting it, and if they
   disagree, rewrite the file from `index.json`'s inline `definition` for the
   id you actually picked.
+- **A `Sequence[Selector]` event handler must use independent `if`s, not
+  `elif`, when a single event type can satisfy more than one selector at
+  once.** A `Sequence[Selector]` returns the union of matches, so one replayed
+  event can carry tags that fall inside more than one selector's tag set
+  simultaneously (e.g. `StudentSubscribed` tagged `[course:X, student:Y]`
+  satisfies both "this course's capacity" and "this student's subscription
+  count" when X and Y are the ids in question). Chaining the checks with
+  `elif` silently drops whichever condition comes second; each tag-derived
+  condition needs its own `if` so the handler can increment/decrement more
+  than one counter from the same event.

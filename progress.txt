@@ -300,3 +300,65 @@
 - Slice complete: marked "Done" in `index.json` and `coursecatalogue/slice.json`.
   Committing as `feat: Course Catalogue` on `feature/coursecatalogue` and
   fast-forward merging into `restart`.
+
+## 2026-08-12 - Subscribe Student (STATE_CHANGE) - iteration start
+
+- Session start: found `.build-kit/.slices/course-subscriptions/*.json` truncated to
+  bare stubs in the working tree again - same corruption pattern as every prior
+  iteration. Restored via `git checkout -- .build-kit/.slices/course-subscriptions/`.
+- Picked highest-priority Planned slice: "Subscribe Student" (index 5, id
+  `0aaedf9d-e5d0-4bc6-b2d2-d3f6e6dd1945`, STATE_CHANGE). The only other Planned
+  slice, "Register Student" (index 6), is an AUTOMATION triggered by a "Student to
+  Register" readmodel that doesn't exist yet (status "Created") - lower priority by
+  index anyway, so no conflict in the pick.
+- Branch `feature/subscribestudent` existed but was pre-restart, unrelated history
+  (no merge-base with `restart`, already an ancestor of `main`) - same pattern as
+  other stale `feature/*` branches. Deleted and recreated fresh from `restart`.
+- Marked InProgress in `index.json`, `subscribestudent/slice.json`, and via the
+  board's `node:changed`/`sliceStatus` curl fallback (succeeded first try).
+- Command `Subscribe Student` (courseId, studentId) -> event `Student Subscribed`.
+  Board comment flags ambiguity about the subscription limit (2 vs 10 vs 5 in
+  various references) - resolved by the spec itself: `courseLimit` is a per-student
+  field set at registration (see "Student at subscription limit (2)" spec, which
+  seeds a `Student Registered` event with `courseLimit: 2`), not a hardcoded
+  constant. No blocking ambiguity.
+- 5 specifications: happy path, unknown course (SPEC_ERROR), course full
+  (SPEC_ERROR), already subscribed (SPEC_ERROR), student at subscription limit
+  (SPEC_ERROR, needs count of student's active subscriptions across courses vs
+  their courseLimit).
+- Designed a `Sequence[Selector]` boundary with two independent selectors:
+  `course:{course_id}` (for `CourseRegistered`/`CourseCapacityChanged` plus
+  `StudentSubscribed`/`StudentUnsubscribed` scoped to that course) and
+  `student:{student_id}` (for `StudentRegistered` plus
+  `StudentSubscribed`/`StudentUnsubscribed` scoped to that student). A single
+  `StudentSubscribed`/`StudentUnsubscribed` event can satisfy both selectors at
+  once (this student's subscription to this course), so the event handlers use
+  independent `if`s rather than `elif` to update each of the three counters
+  (`course_subscription_count`, `student_subscription_count`,
+  `already_subscribed`) that its tags actually match - documented as a new
+  reusable pattern in `AGENTS.md`, distinct from Change Course Capacity's
+  single-selector tag-intersection pattern (already documented there).
+- Route: `POST /students/{student_id}/subscriptions` (nested under student, per
+  precedent from Unsubscribe Student's `/students/{student_id}/unsubscriptions`;
+  `course_id` travels in the body). Verified no collision via `grep` on
+  `docs/openapi.json` before writing the route.
+- Files added: `subscribe_student/{__init__.py,slice.py,routes.py}`,
+  `tests/acceptance/course_subscriptions/subscribe_student/test_subscribe_student.py`
+  (5 tests, one per specification), `tests/integration/course_subscriptions/test_subscribe_student.py`
+  (6 tests: 201 happy path, 422 unknown course, 422 already subscribed, 422
+  course full, 422 subscription limit reached, 422 missing field). Wired
+  `subscribe_student_routes.router` into `main.py`. Regenerated
+  `docs/openapi.json` (purely additive: one new path
+  `/students/{student_id}/subscriptions` + `SubscribeStudentRequest` schema).
+- One `ruff` E501 (docstring line too long) on `consistency_boundary`'s
+  docstring - fixed by shortening the wording, no logic change.
+- No `test-analyzer` skill installed in this project (same as every prior
+  iteration) - skipped that step.
+- Scoped checks green: style (ruff + pydoclint, clean), types (pyrefly, 0
+  errors), acceptance (23 total, 5 new)/integration (27 total, 6 new) suites
+  passing. No dependency changes, so no lock-file regeneration needed.
+- Board sync via curl fallback succeeded for both InProgress and Done
+  transitions on node id `0aaedf9d-e5d0-4bc6-b2d2-d3f6e6dd1945`.
+- Slice complete: marked "Done" in `index.json` and
+  `subscribestudent/slice.json`. Committing as `feat: Subscribe Student` on
+  `feature/subscribestudent` and fast-forward merging into `restart`.

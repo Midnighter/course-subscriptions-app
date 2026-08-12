@@ -160,6 +160,20 @@
         "title": "StudentCourseSubscriptionsResponse",
         "type": "object"
       },
+      "SubscribeStudentRequest": {
+        "description": "Request body for the Subscribe Student command.",
+        "properties": {
+          "course_id": {
+            "title": "Course Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "course_id"
+        ],
+        "title": "SubscribeStudentRequest",
+        "type": "object"
+      },
       "UnsubscribeStudentRequest": {
         "description": "Request body for the Unsubscribe Student command.",
         "properties": {
@@ -385,6 +399,62 @@
         "summary": "Student Course Subscriptions",
         "tags": [
           "student_course_subscriptions"
+        ]
+      }
+    },
+    "/students/{student_id}/subscriptions": {
+      "post": {
+        "description": "Subscribe a student to a course, subject to capacity and student limits.",
+        "operationId": "subscribe_student",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "student_id",
+            "required": true,
+            "schema": {
+              "title": "Student Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscribeStudentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "204": {
+            "description": "The command recorded nothing."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Subscribe Student",
+        "tags": [
+          "subscribe_student"
         ]
       }
     },

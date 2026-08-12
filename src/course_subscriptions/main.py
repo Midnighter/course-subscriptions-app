@@ -21,6 +21,9 @@ from course_subscriptions.course_subscriptions.register_course import (
 from course_subscriptions.course_subscriptions.student_course_subscriptions import (
     routes as student_course_subscriptions_routes,
 )
+from course_subscriptions.course_subscriptions.subscribe_student import (
+    routes as subscribe_student_routes,
+)
 from course_subscriptions.course_subscriptions.unsubscribe_student import (
     routes as unsubscribe_student_routes,
 )
@@ -40,6 +43,7 @@ def create_app() -> FastAPI:
     """Build the FastAPI application, wiring in every slice's router."""
     app = FastAPI(lifespan=lifespan)
     app.include_router(student_course_subscriptions_routes.router)
+    app.include_router(subscribe_student_routes.router)
     app.include_router(unsubscribe_student_routes.router)
     app.include_router(change_course_capacity_routes.router)
     app.include_router(register_course_routes.router)

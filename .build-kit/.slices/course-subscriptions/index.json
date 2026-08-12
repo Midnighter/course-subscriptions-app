@@ -593,7 +593,7 @@
         "specifications": [
           {
             "id": "e1e11111-1111-4111-8111-111111111111",
-            "title": "Unsubscribed \u2014 happy path",
+            "title": "Unsubscribed — happy path",
             "chapter": "Course Subscriptions",
             "sliceName": "Unsubscribe Student",
             "vertical": false,
@@ -977,7 +977,7 @@
         "specifications": [
           {
             "id": "c1c11111-1111-4111-8111-111111111111",
-            "title": "Capacity changed \u2014 happy path",
+            "title": "Capacity changed — happy path",
             "chapter": "Course Subscriptions",
             "sliceName": "Change Course Capacity",
             "vertical": false,
@@ -1049,7 +1049,7 @@
           },
           {
             "id": "c1c33333-3333-4333-8333-333333333333",
-            "title": "Same capacity \u2014 rejected",
+            "title": "Same capacity — rejected",
             "chapter": "Course Subscriptions",
             "sliceName": "Change Course Capacity",
             "vertical": false,
@@ -1104,7 +1104,7 @@
             "then": [
               {
                 "id": "b8fd9e08-c439-426f-9691-6f2dd91ad755",
-                "title": "Same capacity \u2014 rejected",
+                "title": "Same capacity — rejected",
                 "description": "New capacity equals current capacity",
                 "type": "SPEC_ERROR",
                 "fields": []
@@ -1447,7 +1447,7 @@
             "elementCopy": false,
             "sketched": false,
             "comments": [
-              "Can a course be deleted / cancelled after registration? Kraken has no such command \u2014 is that intentional here as well?"
+              "Can a course be deleted / cancelled after registration? Kraken has no such command — is that intentional here as well?"
             ]
           }
         ],
@@ -1489,7 +1489,7 @@
         "specifications": [
           {
             "id": "a1a11111-1111-4111-8111-111111111111",
-            "title": "Course registered \u2014 happy path",
+            "title": "Course registered — happy path",
             "chapter": "Course Subscriptions",
             "sliceName": "Register Course",
             "vertical": false,
@@ -2128,11 +2128,11 @@
       "contextName": "Course Subscriptions",
       "contextSlug": "course-subscriptions",
       "folder": "subscribestudent",
-      "status": "Planned",
+      "status": "Done",
       "definition": {
         "id": "0aaedf9d-e5d0-4bc6-b2d2-d3f6e6dd1945",
         "title": "Subscribe Student",
-        "status": "Planned",
+        "status": "Done",
         "sliceType": "STATE_CHANGE",
         "chapter": "Course Subscriptions",
         "context": "Course Subscriptions",
@@ -2317,7 +2317,7 @@
         "specifications": [
           {
             "id": "d1d11111-1111-4111-8111-111111111111",
-            "title": "Subscribed \u2014 happy path",
+            "title": "Subscribed — happy path",
             "chapter": "Course Subscriptions",
             "sliceName": "Subscribe Student",
             "vertical": false,
@@ -2408,7 +2408,7 @@
           },
           {
             "id": "d1d33333-3333-4333-8333-333333333333",
-            "title": "Course is full (capacity 2 \u2192 3rd rejected)",
+            "title": "Course is full (capacity 2 → 3rd rejected)",
             "chapter": "Course Subscriptions",
             "sliceName": "Subscribe Student",
             "vertical": false,
@@ -2466,7 +2466,7 @@
             "then": [
               {
                 "id": "ec8ca887-473d-4be4-a877-4179447d05b6",
-                "title": "Course is full (capacity 2 \u2192 3rd rejected)",
+                "title": "Course is full (capacity 2 → 3rd rejected)",
                 "description": "Course capacity is full",
                 "type": "SPEC_ERROR",
                 "fields": []
@@ -2615,7 +2615,7 @@
                   },
                   {
                     "name": "name",
-                    "example": "Anna M\u00fcller"
+                    "example": "Anna Müller"
                   },
                   {
                     "name": "courseLimit",
@@ -2912,7 +2912,7 @@
             "elementCopy": false,
             "sketched": false,
             "comments": [
-              "[QUESTION] What triggers a student to be registered \u2014 is this something the student does themselves, or does another system set it off?"
+              "[QUESTION] What triggers a student to be registered — is this something the student does themselves, or does another system set it off?"
             ]
           }
         ],
@@ -2942,7 +2942,7 @@
                   },
                   {
                     "name": "name",
-                    "example": "Anna M\u00fcller"
+                    "example": "Anna Müller"
                   },
                   {
                     "name": "courseLimit",
@@ -2967,7 +2967,7 @@
                   },
                   {
                     "name": "name",
-                    "example": "Anna M\u00fcller"
+                    "example": "Anna Müller"
                   },
                   {
                     "name": "courseLimit",
@@ -3001,7 +3001,7 @@
                   },
                   {
                     "name": "name",
-                    "example": "Anna M\u00fcller"
+                    "example": "Anna Müller"
                   },
                   {
                     "name": "courseLimit",
@@ -3026,7 +3026,7 @@
                   },
                   {
                     "name": "name",
-                    "example": "Anna M\u00fcller"
+                    "example": "Anna Müller"
                   },
                   {
                     "name": "courseLimit",
@@ -3164,7 +3164,7 @@
             "elementCopy": false,
             "sketched": false,
             "comments": [
-              "After 10 consecutive Ralph iterations flagged this as unresolved, determination: this is a leftover/incomplete duplicate of column D's \"Course Catalogue\" slice (d30964fa-e955-4edd-a3bb-25e956575b0d), not an intentional second consumer. Evidence: identical readmodel title/fields, but this node's inbound dependencies (Student Subscribed, Course Capacity Changed) are a strict subset of column D's (which also has Course Registered, Student Unsubscribed) \u2014 consistent with an earlier/partial version of the same model that was superseded when column D was completed. No specifications, commands, or screen were ever attached here. Building a second `/course-catalogue` route would collide with the one already implemented from column D.\n\nSetting slice status to \"Blocked\" (rather than leaving it \"Planned\" forever) so the build loop stops re-picking an unbuildable stub. Recommended next step for a human modeler: delete this column/slice from the board, or explicitly wire up a distinct screen/actor if it truly is meant to be a second consumer.",
+              "After 10 consecutive Ralph iterations flagged this as unresolved, determination: this is a leftover/incomplete duplicate of column D's \"Course Catalogue\" slice (d30964fa-e955-4edd-a3bb-25e956575b0d), not an intentional second consumer. Evidence: identical readmodel title/fields, but this node's inbound dependencies (Student Subscribed, Course Capacity Changed) are a strict subset of column D's (which also has Course Registered, Student Unsubscribed) — consistent with an earlier/partial version of the same model that was superseded when column D was completed. No specifications, commands, or screen were ever attached here. Building a second `/course-catalogue` route would collide with the one already implemented from column D.\n\nSetting slice status to \"Blocked\" (rather than leaving it \"Planned\" forever) so the build loop stops re-picking an unbuildable stub. Recommended next step for a human modeler: delete this column/slice from the board, or explicitly wire up a distinct screen/actor if it truly is meant to be a second consumer.",
               "This \"Course Catalogue\" read model (column G) duplicates the one in column D (both titled \"Course Catalogue\", and this one links back to the same node via data.linkedTo) but has no screen/actor connected here. Is this an intentional second consumer of the read model, or a leftover/incomplete duplicate that should be removed or merged into column D's slice?"
             ]
           }
