@@ -78,6 +78,8 @@ The shared runtime is these six modules under `src/snake_case({ProjectName})/`:
 
 Each is written **once** per project and is never a per-slice artefact. `projection.py` is the one deferred to first use, because it is dead code in a project with no projection — but Step 0 still checks for it, and a projection slice that finds it missing creates it before the slice, not alongside it.
 
+The `/healthz` route is deferred on the same terms: the slice that registers the **first** supervisor adds it to `create_app()`, whatever that slice's type. It has nothing to report until a supervisor exists, and a supervisor without it is a projection that can die unobserved. See *Supervising projections* → *The `/healthz` route*.
+
 The order below matters: `telemetry.py` imports `CommandSlice` from `command.py`, and `application.py` imports `command_span` from `telemetry.py`.
 
 1. **Resolve every `TODO` placeholder in `pyproject.toml`.** `grep -n TODO pyproject.toml` to find them all: `[project] name`, `description`, `authors`; `packages = ["src/TODO"]` and `version-file = "src/TODO/_version.py"`; `[tool.coverage.paths] source`/`omit`; `[tool.ruff] exclude`; `[tool.ruff.lint.isort] known-first-party`; `pyrefly check src/TODO`; and the three `--cov=TODO` occurrences in the `unit-tests`/`acceptance-tests`/`integration-tests` scripts. Never create `src/snake_case({ProjectName})/_version.py` by hand — `hatch-vcs` generates it at build time and it's gitignored.
@@ -308,6 +310,49 @@ One unhandled exception in `process_event` **permanently kills** the processing 
 - **Do not wrap `process_event` in a blanket `try/except`.** Swallowing an event and advancing past it diverges the view from the log permanently while health checks still report 200. Automations keep their targeted guard around the *command port* (`_fire`), where the lingering ledger entry is itself the signal.
 - **The watchdog is a thread, not an asyncio task,** because tearing a runner down makes two unbounded `Thread.join()` calls and may block on a dead database socket. On the event loop that would stall every request; on a thread it degrades one projection.
 - **`/healthz` reports; it never restarts.** Recovery is the supervisor's job, so health checks stay free of side effects.
+
+#### The `/healthz` route
+
+**The slice that registers the first supervisor also adds this route** — whichever slice type it happens to be. A supervisor with no health surface is the failure it exists to prevent: past `max_restarts` the runner stays dead, and without this the process answers every request happily while the view sits frozen. If an earlier slice already added it, leave it exactly as it is.
+
+It goes in `create_app()` in `src/snake_case({ProjectName})/main.py`, after the `include_router` lines. There is no module-level `app` to decorate.
+
+```python
+from fastapi import FastAPI, HTTPException, Request, status
+
+
+def create_app() -> FastAPI:
+    """Build the FastAPI application, wiring in every slice's router."""
+    # ... the existing configure_telemetry / instrument_app / include_router lines ...
+
+    @app.get("/healthz")
+    async def healthz(request: Request) -> dict[str, str]:
+        """Report whether every supervised projection is still running."""
+        failures = request.state.projection_supervisor.failures()
+        if failures:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={name: str(error) for name, error in failures.items()},
+            )
+        return {"status": "ok"}
+
+    return app
+```
+
+`request.state.projection_supervisor` is the key the lifespan yields — the route reads the supervisor, never a runner and never a view. `Request` must be imported at runtime, not under `TYPE_CHECKING`, or FastAPI mistakes it for a query parameter and the route 422s; see *FastAPI / Pydantic gotchas*. Being an operational route it keeps a flat path and is exempt from the addressing convention in *API addressing*.
+
+Register each view's lag as an observable gauge alongside it. That is the metric distinguishing "healthy" from "running but hopelessly behind", which `failures()` alone cannot tell you:
+
+```python
+head = app.recorder.head()
+tracked = view.max_tracking_id(app.context_name)
+if head is not None and tracked is not None:
+    yield Observation(head - tracked, {"projection": "snake_case({SliceName})"})
+```
+
+**Both calls return `int | None`.** Before the projection has processed anything its lag is *undefined*, not zero — skip the observation rather than reporting a fake backlog the moment the process starts.
+
+**Cover the 503 in `tests/integration/`.** Drive a projection past `max_restarts` — a view whose mutator raises on every event is the cheapest way — then assert the status is 503 and that the body names the failed projection. A health route that has only ever been observed returning 200 is not known to work; this is the one path that matters, and it is unreachable through any other endpoint.
 
 ### Projections (materialized views)
 

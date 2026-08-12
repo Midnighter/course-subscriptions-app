@@ -914,7 +914,9 @@ If the project already has a supervisor (any earlier projection slice built one)
 this slice adds only three lines to the existing lifespan — `create_view()`,
 `supervisor.register(...)`, and one key in the yielded mapping — plus its
 `include_router`. Create `supervisor` and the `AsyncExitStack` only if this is
-the project's first projection.
+the project's first projection — and if you did create them, add `/healthz` in
+the same step (see *Reporting projection health* below). A supervisor without it
+can only report a dead projection to a log nobody is reading.
 
 Once the router is included the route exists on the real app, so **regenerate the
 spec and stage it with the slice**:
@@ -957,42 +959,15 @@ definition calls for durability.
 
 ### Reporting projection health
 
-A supervised projection needs a `/healthz` route to report terminal failure —
-the supervisor has already given up restarting by then, and without this the
-process answers every request happily while the view sits frozen. Create it in
-`main.py` alongside the supervisor if it is not there yet; leave it as it is if
-an earlier slice already added it.
+Registering a supervisor above created the obligation to report on it: past
+`max_restarts` the runner stays dead, and without a health surface the process
+answers every request happily while the view sits frozen.
 
-```python
-@app.get("/healthz")
-async def healthz(request: Request) -> dict[str, str]:
-    """Report whether every supervised projection is still running."""
-    failures = request.state.projection_supervisor.failures()
-    if failures:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={name: str(error) for name, error in failures.items()},
-        )
-    return {"status": "ok"}
-```
-
-**It reports; it never restarts.** Recovery is the supervisor's job, so health
-checks stay free of side effects (see `.build-kit/CLAUDE.md` → *Supervising projections*).
-
-Register the view's lag as an observable gauge alongside this route — it is the
-metric that distinguishes "healthy" from "running but hopelessly behind", which
-`failures()` alone cannot tell you:
-
-```python
-head = app.recorder.head()
-tracked = view.max_tracking_id(app.context_name)
-if head is not None and tracked is not None:
-    yield Observation(head - tracked, {"projection": "snake_case({SliceName})"})
-```
-
-**Both calls return `int | None`.** Before the projection has processed
-anything its lag is *undefined*, not zero — skip the observation rather than
-reporting a fake backlog the moment the process starts.
+**The route, its lag gauge and its 503 test are in `.build-kit/CLAUDE.md` →
+*Supervising projections* → *The `/healthz` route*.** Add it there if this slice
+registered the project's **first** supervisor; leave it exactly as it is if an
+earlier slice already did. It reports and never restarts — recovery is the
+supervisor's job, so health checks stay free of side effects.
 
 ---
 

@@ -66,6 +66,7 @@ A slice is built *on* the shared runtime; it never carries a copy of it. Before 
 | `application.py` | ditto — including the `do()` override and the `command_span` inside it |
 | `main.py` | ditto — including `configure_telemetry()`, `instrument_app()` and `instrument_recorder()` |
 | `projection.py` | `.build-kit/CLAUDE.md` → *Projection runners*; **required** by this slice type — see Step 5 |
+| `/healthz` in `main.py` | `.build-kit/CLAUDE.md` → *Supervising projections*; required once a supervisor exists, and this slice type registers one |
 
 A missing module is an incomplete setup, not an opt-out — in particular, **do not skip a slice's instrumentation because `telemetry.py` is absent.** Create what is missing, run the test suites, and commit it on its own as a `chore:` **before** starting the slice: a shared-runtime module folded into a `feat:` commit is unreviewable and reads as slice-specific when it is not.
 
@@ -730,9 +731,15 @@ async with AsyncExitStack() as stack:
   synchronize on.
 - **An automation with no HTTP surface still belongs in this lifespan.** Do not give it
   its own process or its own application; the loop only closes over a shared store.
+- **If this is the project's first supervisor, add `/healthz` in the same step** — the
+  route, the lag gauge and the 503 test are all in `.build-kit/CLAUDE.md` →
+  *Supervising projections* → *The `/healthz` route*. An automation needs it more than a
+  view does, not less: a view at least has a route someone can notice going stale, whereas
+  a dead automation has no symptom at all until someone asks why nothing happened. Leave
+  the route untouched if an earlier slice already added it.
 - **Count restarts here.** The supervisor is the only place that knows a runner died, so
-  increment a restart counter where it rebuilds one, and expose lag as an observable
-  gauge (see `build-state-view` → *Reporting projection health*). An automation with no route needs this more than a view does, not less:
+  increment a restart counter where it rebuilds one, and expose lag as the gauge described
+  in that same section. An automation with no route needs this more than a view does, not less:
   without an HTTP surface, a silently dead automation has no other symptom.
 
 ---
@@ -1018,6 +1025,7 @@ worth writing.
 src/snake_case({ProjectName})/
     projection.py                     # SHARED RUNTIME — SharedAppProjectionRunner + ProjectionSupervisor (create ONLY if absent; never per-slice)
     telemetry.py                      # SHARED RUNTIME — verified in Step 0; supplies `consumer_span`, never written per-slice
+    main.py                           # EDITED, not created — view, supervisor registration, and /healthz if this is the first supervisor
 
 src/snake_case({ProjectName})/snake_case({Context})/snake_case({SliceName})/
     __init__.py
@@ -1070,6 +1078,7 @@ The command slice under
 - [ ] Integration tests seed raw `TaggedEvent`s through the **shared** application, and `view.wait(context_name=..., notification_id=position + 1, ...)` rather than sleeping
 - [ ] The seeded event carries every tag the command slice's boundary selects on
 - [ ] The `drain()` recovery test builds its own view and app, consuming the position **before** any runner is constructed
-- [ ] No `routes.py` created (automations are not exposed via HTTP)
+- [ ] No `routes.py` created (automations are not exposed via HTTP) — `/healthz` is the one exception, and it is operational, not this slice's surface
+- [ ] `/healthz` exists in `create_app()` and its 503 path has an integration test; added here if this slice registered the project's first supervisor, left untouched if an earlier one did
 - [ ] Step 0 ran: `command.py`, `telemetry.py`, `application.py`, `main.py` and `projection.py` all exist, and anything created there was committed as a `chore:` before this slice
 - [ ] `process_event`'s `match` is wrapped in one `consumer_span(envelope, ...)` that re-raises, and `_fire`'s narrow guard is left untouched

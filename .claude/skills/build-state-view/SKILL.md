@@ -45,6 +45,7 @@ A slice is built *on* the shared runtime; it never carries a copy of it. Before 
 | `application.py` | ditto — including the `do()` override and the `command_span` inside it |
 | `main.py` | ditto — including `configure_telemetry()`, `instrument_app()` and `instrument_recorder()` |
 | `projection.py` | `.build-kit/CLAUDE.md` → *Projection runners*; needed by the **materialized** approach only |
+| `/healthz` in `main.py` | `.build-kit/CLAUDE.md` → *Supervising projections*; required once a supervisor exists — the **materialized** approach registers one |
 
 A missing module is an incomplete setup, not an opt-out — in particular, **do not skip a slice's instrumentation because `telemetry.py` is absent.** Create what is missing, run the test suites, and commit it on its own as a `chore:` **before** starting the slice: a shared-runtime module folded into a `feat:` commit is unreviewable and reads as slice-specific when it is not.
 
