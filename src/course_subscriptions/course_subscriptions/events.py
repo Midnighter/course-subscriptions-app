@@ -32,3 +32,10 @@ class StudentUnsubscribed(Decision):
 
     course_id: str
     student_id: str
+
+
+class CourseCapacityChanged(Decision):
+    """A course's capacity limit on concurrent subscriptions was changed."""
+
+    course_id: str
+    capacity: int

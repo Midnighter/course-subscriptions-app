@@ -123,3 +123,59 @@
   slice, so no lock-file regeneration was needed.
 - Slice complete: marked "Done" in `index.json`, `slice.json`, and via
   `update_slice_status` MCP. Merged `feature/unsubscribestudent` into `restart`.
+
+## 2026-08-12 - Change Course Capacity (STATE_CHANGE) - iteration start
+
+- Session start: found `.build-kit/.slices/course-subscriptions/*.json` (index.json
+  and all per-slice slice.json files) truncated to bare `{id, title, status}` stubs
+  in the working tree, matching the exact corruption pattern already documented in
+  the previous entry. Restored via `git checkout -- .build-kit/.slices/course-subscriptions/`
+  against the last commit (d1a4d44) before proceeding.
+- Picked highest-priority Planned slice: "Change Course Capacity" (index 2,
+  STATE_CHANGE). Marked InProgress in index.json, slice.json, and via
+  `update_slice_status` MCP.
+- Branch: `feature/changecoursecapacity` already existed but was pre-restart,
+  unrelated history (no merge-base with `restart`) - same pattern as the other
+  stale `feature/*` branches noted in AGENTS.md. Confirmed it was already an
+  ancestor of `main` (zero data loss), deleted it, and recreated fresh from
+  `restart`.
+- Slice has an unresolved-looking comment on the command ("what happens when
+  capacity drops below current subscriberCount?") but the specifications already
+  answer it: a `SPEC_ERROR` scenario "Cannot reduce capacity below current
+  subscriptions" rejects the command outright. Treating the comment as resolved
+  by the spec, no ambiguity blocking implementation.
+- Dispatching to `build-state-change` skill next.
+- Consistency boundary: single `Selector(types=[CourseRegistered,
+  CourseCapacityChanged, StudentSubscribed, StudentUnsubscribed],
+  tags=[f"course:{course_id}"])` — tag intersection lets one selector
+  aggregate subscription count across many students without a
+  `Sequence[Selector]`. Documented as a new reusable pattern in `AGENTS.md`.
+- Added `CourseCapacityChanged` to the shared
+  `course_subscriptions/events.py`. Created the
+  `change_course_capacity` package (`slice.py`, `routes.py`), wired
+  `main.py`. Route: `POST /courses/{course_id}/capacity-changes` (nominalised
+  intention noun over the `course:{course_id}` boundary tag), 201/204/422
+  responses, tag/operation_id `change_course_capacity`.
+- Acceptance tests (4): happy path, unknown course, same capacity rejected,
+  capacity below current subscriptions rejected — all via GWT against the
+  single selector above.
+- Integration tests (5): 201 happy path, 422 unknown course, 422 same
+  capacity, 422 below-subscriptions (seeded via `app.events.append`), 422
+  missing field. Full integration suite (13 tests, all slices) green, no
+  regressions.
+- Scoped checks green: `style:check` (ruff + pydoclint), `types:check`
+  (pyrefly, 0 errors), acceptance (12 total)/integration (13
+  total)/unit (1)/documentation (2) suites all passing. No dependency
+  changes in this slice, so no lock-file regeneration was needed.
+- `docs/openapi.json` regenerated: purely additive diff (new
+  `ChangeCourseCapacityRequest` schema + new
+  `/courses/{course_id}/capacity-changes` path), no existing paths altered.
+- Board sync: `mcp__eventmodelers__update_slice_status` (sliceId
+  `9c31851a-1b99-4a50-b0ba-621599def7a6`) failed three times in a row with
+  `Internal Server Error`, including on a plain `list_slices` diagnostic
+  call — looks like a transient platform-side outage, not a malformed
+  request. Local `index.json`/`slice.json` are already set to "Done"; a
+  future iteration or human should retry the board sync for this slice.
+- Slice complete: marked "Done" in `index.json` and `slice.json`. Committed
+  as `feat: Change Course Capacity` on `feature/changecoursecapacity` and
+  fast-forward merged into `restart`.

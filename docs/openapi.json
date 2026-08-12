@@ -1,6 +1,20 @@
 {
   "components": {
     "schemas": {
+      "ChangeCourseCapacityRequest": {
+        "description": "Request body for the Change Course Capacity command.",
+        "properties": {
+          "capacity": {
+            "title": "Capacity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "capacity"
+        ],
+        "title": "ChangeCourseCapacityRequest",
+        "type": "object"
+      },
       "CommandResponse": {
         "description": "Response body reporting the outcome of a successful command.",
         "properties": {
@@ -138,6 +152,62 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/courses/{course_id}/capacity-changes": {
+      "post": {
+        "description": "Change the capacity limit on concurrent subscriptions for a course.",
+        "operationId": "change_course_capacity",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "title": "Course Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeCourseCapacityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "204": {
+            "description": "The command recorded nothing."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change Course Capacity",
+        "tags": [
+          "change_course_capacity"
+        ]
+      }
+    },
     "/students/{student_id}/course-subscriptions": {
       "get": {
         "description": "Return a student's current course subscriptions.",

@@ -1,7 +1,7 @@
 {
   "id": "9c31851a-1b99-4a50-b0ba-621599def7a6",
   "title": "Change Course Capacity",
-  "status": "Planned",
+  "status": "Done",
   "sliceType": "STATE_CHANGE",
   "chapter": "Course Subscriptions",
   "context": "Course Subscriptions",

@@ -51,3 +51,13 @@ detail belongs in `progress.txt`, not here.
   the same course). That case has to move to the integration suite, seeded via
   `app.events.append`; write the acceptance test for the same invariant using
   only boundary-compliant history instead.
+- **A single `Selector` is enough for a one-entity invariant that must
+  aggregate across a many-relationship** (e.g. "reject if new capacity <
+  current subscription count" on a course with many student subscriptions).
+  `Selector` matches by tag *intersection*, not equality, so
+  `Selector(types=[...several event types...], tags=[f"course:{course_id}"])`
+  still selects `StudentSubscribed`/`StudentUnsubscribed` events tagged
+  `[course:X, student:Y]` — the extra `student:Y` tag doesn't exclude them.
+  Reach for `Sequence[Selector]` only when the invariant genuinely spans two
+  *independent* entities (see the two-entity boundary note above), not
+  whenever a second tag merely happens to be present on some events.
