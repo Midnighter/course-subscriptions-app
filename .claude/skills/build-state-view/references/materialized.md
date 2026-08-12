@@ -7,7 +7,7 @@ Read this only after Step 1 of `SKILL.md` selected this approach.
 
 > **The central-application pattern applies here too.** Command slices, on-demand
 > views, materialized views and automations all share the one process-wide
-> `{ProjectName}App` (see `CLAUDE.md` → *Application wiring*). The stock
+> `{ProjectName}App` (see `.build-kit/CLAUDE.md` → *Application wiring*). The stock
 > `ProjectionRunner` cannot be used, because it takes an application **class** and
 > constructs its own instance (`application_class(env=env)`) — under POPO that
 > private store is invisible to the routes doing the writing, so the view would
@@ -407,7 +407,7 @@ executes the entries-table statement registered in `__init__`.
 
 ### Notes on the template
 
-`CLAUDE.md` covers the `Projection` API rules this template relies on —
+`.build-kit/CLAUDE.md` covers the `Projection` API rules this template relies on —
 `name`, `topics`, matching on `envelope.decision`, the mandatory `case _:`
 wildcard, and persisting `tracking` on every branch. Slice-specific points:
 
@@ -431,9 +431,9 @@ wildcard, and persisting `tracking` on every branch. Slice-specific points:
 
 ### Instrumenting `process_event`
 
-Skip this if the project has no `src/snake_case({ProjectName})/telemetry.py`.
-Otherwise wrap the whole `match` in one consumer span, which is the only place
-a projection needs telemetry:
+`src/snake_case({ProjectName})/telemetry.py` exists — Step 0 established that.
+Wrap the whole `match` in one consumer span, which is the only place a
+projection needs telemetry:
 
 ```python
     def process_event(
@@ -453,7 +453,7 @@ a projection needs telemetry:
 
 - **A link, not a child span.** The producing request finished long ago, and
   this runs on a bare `threading.Thread` that inherits no contextvars, so there
-  is no ambient context to be a child *of*. `CLAUDE.md` → *Observability*.
+  is no ambient context to be a child *of*. `.build-kit/CLAUDE.md` → *Observability*.
 - **The span must not swallow the exception.** Record it and re-raise. A
   projection that logs an error and advances past a poison event diverges from
   the log permanently while `/healthz` still reports 200 — the same failure the
@@ -559,7 +559,7 @@ Notes on the template:
   that is the projection's own API, not the public one.
 - **`request.state`, never `request.app.state`.** The latter is a `State()` built
   in `Starlette.__init__` that never receives lifespan state, so reading from it
-  raises `AttributeError` at request time (see `CLAUDE.md` → *Application
+  raises `AttributeError` at request time (see `.build-kit/CLAUDE.md` → *Application
   wiring*). Step 6 needs no `dependency_overrides` for the view: it runs against
   the real app, whose lifespan populates this key.
 - Status codes follow the *Error mapping* table in `SKILL.md` — staleness
@@ -584,7 +584,7 @@ For a single-entity scalar view, change `get_entries`/`add_entry` to
 
 File: `tests/acceptance/snake_case({Context})/snake_case({SliceName})/test_snake_case({SliceName}).py`
 
-GWT cannot drive a `Projection` (see `CLAUDE.md`), so acceptance tests here
+GWT cannot drive a `Projection` (see `.build-kit/CLAUDE.md`), so acceptance tests here
 construct the view and projection directly and call `process_event`
 themselves — no runner, no background thread, no `ProjectionRunner` involved:
 
@@ -630,7 +630,7 @@ def test_snake_case({SliceName})_reports_absent_when_no_events() -> None:
   `context_name` string (consistent within a test) and strictly increasing
   `notification_id` values, mirroring what `DcbApplicationSubscription` would
   hand the projection in production. Reusing an id raises `IntegrityError`
-  (see `CLAUDE.md`).
+  (see `.build-kit/CLAUDE.md`).
 - **Always test against `POPO{SliceName}View`,** even when the slice also ships
   a Postgres implementation. It needs no configuration, no server, and no
   cleanup. The behaviour under test is the projection's dispatch logic, which
@@ -656,7 +656,7 @@ work together end-to-end, including waiting for the background thread to catch
 up.
 
 **Use the real `create_app()` via the shared `client` fixture** in
-`tests/integration/conftest.py` — never a local `FastAPI()` (see `CLAUDE.md` →
+`tests/integration/conftest.py` — never a local `FastAPI()` (see `.build-kit/CLAUDE.md` →
 *Test layout*). Once Step 7 wires this slice into the app's lifespan, that is
 also the only way to exercise the wiring you actually ship.
 
@@ -766,7 +766,7 @@ seeded-event test can catch it.
 
 ### Integration-test notes
 
-`CLAUDE.md` covers the mechanics this fixture depends on: the mandatory
+`.build-kit/CLAUDE.md` covers the mechanics this fixture depends on: the mandatory
 `with TestClient(app) as ...` for lifespan-bearing apps, seeding with
 `app.events.append(events=[...])`, and `wait()` over `time.sleep`.
 Slice-specific points:
@@ -875,7 +875,7 @@ Details that are load-bearing rather than stylistic:
   projection unsupervised.
 - **`partial(create_runner, dcb_app, view)` is the restart factory.** The
   supervisor calls it again for each restart, always against the same view, so
-  the new runner resumes at `max_tracking_id` (see `CLAUDE.md` → *Supervising
+  the new runner resumes at `max_tracking_id` (see `.build-kit/CLAUDE.md` → *Supervising
   projections*).
 - **The lifespan yields the view, never the runner** — the supervisor swaps
   runners, so a reference held elsewhere could point at a dead one.
@@ -927,8 +927,11 @@ definition calls for durability.
 
 ### Reporting projection health
 
-If the project has a `/healthz` route, have it report terminal projection
-failure — the supervisor has already given up restarting by then:
+A supervised projection needs a `/healthz` route to report terminal failure —
+the supervisor has already given up restarting by then, and without this the
+process answers every request happily while the view sits frozen. Create it in
+`main.py` alongside the supervisor if it is not there yet; leave it as it is if
+an earlier slice already added it.
 
 ```python
 @app.get("/healthz")
@@ -944,11 +947,11 @@ async def healthz(request: Request) -> dict[str, str]:
 ```
 
 **It reports; it never restarts.** Recovery is the supervisor's job, so health
-checks stay free of side effects (see `CLAUDE.md` → *Supervising projections*).
+checks stay free of side effects (see `.build-kit/CLAUDE.md` → *Supervising projections*).
 
-If the project is instrumented, register the view's lag as an observable gauge
-alongside this route — it is the metric that distinguishes "healthy" from
-"running but hopelessly behind", which `failures()` alone cannot tell you:
+Register the view's lag as an observable gauge alongside this route — it is the
+metric that distinguishes "healthy" from "running but hopelessly behind", which
+`failures()` alone cannot tell you:
 
 ```python
 head = app.recorder.head()
@@ -981,7 +984,7 @@ reporting a fake backlog the moment the process starts.
 - **The runner subscribes to the shared application; it never builds one.**
   `ProjectionRunner` takes an application *class* and instantiates it, which
   would give the projection a private store the command routes cannot write
-  to — so this skill uses `SharedAppProjectionRunner` instead (see `CLAUDE.md`
+  to — so this skill uses `SharedAppProjectionRunner` instead (see `.build-kit/CLAUDE.md`
   → *Projection runners*).
 - **Entry and tracking must be written atomically** — under
   `self._database_lock` for POPO, inside one `datastore.transaction(commit=True)`
@@ -1008,7 +1011,9 @@ reporting a fake backlog the moment the process starts.
 docs/
     openapi.json                                          # REGENERATED, not hand-written — `hatch run docs:openapi`
 src/snake_case({ProjectName})/
-    projection.py                                         # SharedAppProjectionRunner + ProjectionSupervisor (create ONLY if absent; never per-slice)
+    main.py                                               # EDITED, not created — router, view, supervisor registration, /healthz
+    projection.py                                         # SHARED RUNTIME — SharedAppProjectionRunner + ProjectionSupervisor (create ONLY if absent; never per-slice)
+    telemetry.py                                          # SHARED RUNTIME — verified in Step 0; supplies `consumer_span`, never written per-slice
 src/snake_case({ProjectName})/snake_case({Context})/
     events.py                                             # shared event Decisions (add new types here; do not remove existing ones)
 src/snake_case({ProjectName})/snake_case({Context})/snake_case({SliceName})/
@@ -1025,5 +1030,5 @@ tests/integration/snake_case({Context})/
 per slice** — it holds the one hand-written `__exit__` override that couples to
 private `BaseProjectionRunner` attributes, plus the supervisor every projection
 registers with. If it already exists, import from it and change nothing; if it
-does not, create it once (see `CLAUDE.md` → *Projection runners* and
+does not, create it once (see `.build-kit/CLAUDE.md` → *Projection runners* and
 *Supervising projections* for exactly what it must guarantee).

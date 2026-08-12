@@ -34,7 +34,7 @@ Every new Python module must satisfy these before it can be committed:
 
 OpenTelemetry covers three seams the library gives no help with: the command path, the event store, and the projection threads — where a failure is silent by construction (a dead processing thread leaves a view quietly stale). All four hooks below are plain public methods or attributes; **nothing here monkeypatches the library.**
 
-- **`src/snake_case({ProjectName})/telemetry.py` is shared runtime — create ONLY if absent, never per-slice.** Same rule as `projection.py`. Its contract:
+- **`src/snake_case({ProjectName})/telemetry.py` is shared runtime, written once at *First-time project setup*.** The module and its tests are in **`.build-kit/references/telemetry.md`** — copy them from there rather than deriving them from the bullets below, which are the *why*, not the source. If you are building a slice in an existing project and this file is missing, that project was set up incompletely: create it and its wiring first, commit as a `chore:`, then build the slice. Never write it per-slice, and never skip a slice's instrumentation because it is absent. Its contract:
   - `configure_telemetry()` — idempotent; called once from `create_app()`. Installs an SDK **only** when `OTEL_EXPORTER_OTLP_ENDPOINT` is set and `OTEL_TRACES_EXPORTER` is not `none`. Honour the standard `OTEL_*` variables; do not invent project-specific ones.
   - `command_span(slice_)` — used by `{ProjectName}App.do`.
   - `consumer_span(envelope, name)` — used by `Projection.process_event`.
@@ -63,25 +63,88 @@ OpenTelemetry covers three seams the library gives no help with: the command pat
 
 ## First-time project setup
 
-Before the first build skill runs in a new project, check whether the files below exist. If not, create them in this order before proceeding with the skill — the build skills themselves assume all of this is already in place.
+Before the first build skill runs in a new project, check whether the files below exist. If not, create them in this order before proceeding with the skill — the build skills themselves assume all of this is already in place. Every build skill's **Step 0** re-checks this list, so a project that was set up incompletely is repaired at the next slice rather than carried forward.
+
+The shared runtime is these six modules under `src/snake_case({ProjectName})/`:
+
+| Module | Created |
+|---|---|
+| `__init__.py` | setup |
+| `command.py` | setup |
+| `telemetry.py` | setup |
+| `application.py` | setup |
+| `main.py` | setup |
+| `projection.py` | the first time a projection slice is built (see *Projection runners*) |
+
+Each is written **once** per project and is never a per-slice artefact. `projection.py` is the one deferred to first use, because it is dead code in a project with no projection — but Step 0 still checks for it, and a projection slice that finds it missing creates it before the slice, not alongside it.
+
+The order below matters: `telemetry.py` imports `CommandSlice` from `command.py`, and `application.py` imports `command_span` from `telemetry.py`.
 
 1. **Resolve every `TODO` placeholder in `pyproject.toml`.** `grep -n TODO pyproject.toml` to find them all: `[project] name`, `description`, `authors`; `packages = ["src/TODO"]` and `version-file = "src/TODO/_version.py"`; `[tool.coverage.paths] source`/`omit`; `[tool.ruff] exclude`; `[tool.ruff.lint.isort] known-first-party`; `pyrefly check src/TODO`; and the three `--cov=TODO` occurrences in the `unit-tests`/`acceptance-tests`/`integration-tests` scripts. Never create `src/snake_case({ProjectName})/_version.py` by hand — `hatch-vcs` generates it at build time and it's gitignored.
 2. **Create `src/snake_case({ProjectName})/__init__.py`** — copyright header plus a one-line module docstring naming the package.
-3. **Create `src/snake_case({ProjectName})/application.py`** — the one process-wide application. Import `DcbApplication` from `eventsourcing.pydantic`, **not** the generic `eventsourcing.dcb.application` — the Pydantic module wires the `Transcoder` this project needs.
+3. **Create `src/snake_case({ProjectName})/command.py`** — the base class every state-change slice inherits and the outcome it carries. See *Command outcomes* below for why each field exists.
    ```python
-   from fastapi import Request
+   from typing import ClassVar, NamedTuple
+   from uuid import UUID  # noqa: TC003
+
+   from eventsourcing.pydantic import Slice
+   from pydantic import BaseModel
+
+
+   class CommandOutcome(NamedTuple):
+       """The ids and append position of the events a command recorded."""
+
+       event_ids: tuple[UUID, ...]
+       position: int | None
+
+
+   class CommandSlice(Slice):
+       """Base class for state-change slices, carrying their command outcome."""
+
+       outcome: ClassVar[CommandOutcome] = CommandOutcome(event_ids=(), position=None)
+
+
+   class CommandResponse(BaseModel):
+       """Response body reporting the outcome of a successful command."""
+
+       event_ids: list[UUID]
+       position: int | None
+   ```
+4. **Create `src/snake_case({ProjectName})/telemetry.py`** — copy it from **`.build-kit/references/telemetry.md`**, which holds the whole module verbatim. Do not derive it from the *Observability* section above; that section is the rationale, the reference file is the source. Create it now, unconditionally: the dependencies are already declared, it costs nothing at runtime with no exporter configured, and a project that ships without it never acquires it later.
+5. **Create `src/snake_case({ProjectName})/application.py`** — the one process-wide application. Import `DcbApplication` from `eventsourcing.pydantic`, **not** the generic `eventsourcing.dcb.application` — the Pydantic module wires the `Transcoder` this project needs. The `do()` override is written **here, once**, and is not a per-slice edit; see *Command outcomes* and *Observability*.
+   ```python
+   from eventsourcing.domain import TSlice
    from eventsourcing.pydantic import DcbApplication
+   from fastapi import Request
+
+   from snake_case({ProjectName}).command import CommandOutcome, CommandSlice
+   from snake_case({ProjectName}).telemetry import command_span
 
 
    class {ProjectName}App(DcbApplication):
        """The single, process-wide DCB application."""
+
+       def do(self, s: TSlice) -> TSlice:
+           """Advance, execute and save a slice, capturing a command's outcome."""
+           with command_span(s):
+               if type(s).do_projection:
+                   s = self.repository.advance(s)
+               s.execute()
+               if isinstance(s, CommandSlice):
+                   event_ids = tuple(envelope.uuid for envelope in s.new_decisions)
+                   position = self.repository.save(s) if s.new_decisions else None
+                   s.outcome = CommandOutcome(event_ids=event_ids, position=position)
+               elif s.new_decisions:
+                   self.repository.save(s)
+               return s
 
 
    def get_application(request: Request) -> {ProjectName}App:
        """Return the process-wide application from FastAPI request state."""
        return request.state.dcb_app
    ```
-4. **Create `src/snake_case({ProjectName})/main.py`** — a minimal bootstrap lifespan. Do **not** reach for `AsyncExitStack`/`ProjectionSupervisor` yet; that upgrade happens later, the first time a projection is added (see *Lifespan ownership* and *Supervising projections* below).
+   The span wraps the **whole** body, `save()` included, because `trigger_event` fires inside `execute()` and the trace context must still be in scope when the events are constructed *and* when they are appended.
+6. **Create `src/snake_case({ProjectName})/main.py`** — a minimal bootstrap lifespan. Do **not** reach for `AsyncExitStack`/`ProjectionSupervisor` yet; that upgrade happens later, the first time a projection is added (see *Lifespan ownership* and *Supervising projections* below).
    ```python
    from collections.abc import AsyncIterator
    from contextlib import asynccontextmanager
@@ -89,21 +152,32 @@ Before the first build skill runs in a new project, check whether the files belo
    from fastapi import FastAPI
 
    from snake_case({ProjectName}).application import {ProjectName}App
+   from snake_case({ProjectName}).telemetry import (
+       configure_telemetry,
+       instrument_app,
+       instrument_recorder,
+   )
 
 
    @asynccontextmanager
    async def lifespan(app: FastAPI) -> AsyncIterator[dict]:
        """Construct the process-wide application for the lifetime of the app."""
        with {ProjectName}App() as dcb_app:
+           instrument_recorder(dcb_app)
            yield {"dcb_app": dcb_app}
 
 
    def create_app() -> FastAPI:
        """Build the FastAPI application, wiring in every slice's router."""
-       return FastAPI(lifespan=lifespan)
+       configure_telemetry()
+       app = FastAPI(lifespan=lifespan)
+       instrument_app(app)
+       return app
    ```
+   Two orderings are load-bearing: `configure_telemetry()` comes **first** in `create_app()`, because `instrument_app` does nothing unless it finds the state that call sets; and `instrument_recorder(dcb_app)` comes **after** the application is constructed, because `recorder` is set in `__init__`. When the lifespan is later upgraded to an `AsyncExitStack`, `instrument_recorder(dcb_app)` moves to immediately after `stack.enter_context({ProjectName}App())`, on the same principle.
+
    Each slice's own build step adds its `include_router` line inside `create_app()` — that's the only per-slice edit to this file.
-5. **Create `tests/integration/conftest.py`** with the shared `client` fixture only — slice-specific fixtures (ids, seeded histories) belong in each slice's own test module, not here.
+7. **Create `tests/integration/conftest.py`** with the shared `client` fixture only — slice-specific fixtures (ids, seeded histories) belong in each slice's own test module, not here.
    ```python
    from collections.abc import Iterator
 
@@ -119,9 +193,31 @@ Before the first build skill runs in a new project, check whether the files belo
        with TestClient(create_app()) as client:
            yield client
    ```
-6. **Fill in the remaining `TODO` titles** in `README.md`, `mkdocs.yml`, and `docs/index.md` with the project's display name. These don't block any tooling, but resolve them as part of setup rather than leaving them for later.
+8. **Create `tests/unit/test_telemetry.py`** — also in `.build-kit/references/telemetry.md`. These are real tests of real logic, not placeholders: they pin the no-op path, the idempotence of `instrument_recorder`, and that no wrapper swallows an exception. They must pass **without** `opentelemetry-sdk` installed, which is what proves the no-op path.
+9. **Fill in the remaining `TODO` titles** in `README.md`, `mkdocs.yml`, and `docs/index.md` with the project's display name. These don't block any tooling, but resolve them as part of setup rather than leaving them for later.
 
-Do not create placeholder tests as part of this setup — see *Test layout* below.
+Do not create placeholder tests as part of this setup — see *Test layout* below. `tests/unit/test_telemetry.py` is not one.
+
+## Building a Slice
+
+Every slice is built by a skill, never by hand. Read `sliceType` from
+`.build-kit/.slices/<contextName>/<folder>/slice.json` and invoke the matching skill:
+
+| `sliceType` | Skill | Builds |
+|---|---|---|
+| `STATE_CHANGE` | `build-state-change` | A `CommandSlice` plus its `POST` route |
+| `STATE_VIEW` | `build-state-view` | A read model plus its `GET` route |
+| `AUTOMATION` | `build-automation` | A `Projection` that reacts to events by issuing a command |
+
+`build-state-view` then splits again, inside the skill: on-demand (the default — replay a
+`Slice` per request, no background thread) or materialized (a `Projection` kept up to date
+by a runner). The skill's own Steps 3–7 dispatch to `references/on-demand.md` or
+`references/materialized.md`; read exactly one.
+
+Each skill begins with **Step 0 — Verify the shared runtime**, which re-checks the module
+list in *First-time project setup* above. Do not skip it, even on a project that has
+already shipped slices: the shared runtime is what a slice is built *on*, and a project
+missing a piece of it will otherwise keep producing slices that quietly lack it.
 
 ## pyeventsourcing DCB API quick reference
 
@@ -182,7 +278,7 @@ Addresses now take per-slice judgement, so nothing guarantees a rebuild lands on
 
 A command route answers with the ids of the events it recorded and the position they were appended at. Neither survives the library's own `do()`: `repository.save()` returns the `int` position and `do()` drops it, while `save()` internally calls `collect_events()`, which drains `new_decisions`. Both must be captured *between* `execute()` and `save()`.
 
-- **`src/snake_case({ProjectName})/command.py` is shared runtime — create ONLY if absent, never per-slice.** Same rule as `projection.py` and `telemetry.py`. It holds `CommandOutcome` (a `NamedTuple` of `event_ids: tuple[UUID, ...]` and `position: int | None`), `CommandSlice`, and the `CommandResponse` body model.
+- **`src/snake_case({ProjectName})/command.py` is shared runtime, written once at *First-time project setup*** — never per-slice, and created before the slice if a project turns out to be missing it. Same rule as `telemetry.py` and `projection.py`. It holds `CommandOutcome` (a `NamedTuple` of `event_ids: tuple[UUID, ...]` and `position: int | None`), `CommandSlice`, and the `CommandResponse` body model.
 - **`CommandSlice` is the base class for every state-change slice**; on-demand view slices stay on plain `Slice`. This is the only thing distinguishing the two kinds — the library gives them the same base — and it is what lets `do()` tell a command apart from a view replay.
 - **`CommandSlice.outcome` defaults to an empty outcome, not `None`.** A route then reads `outcome.position` without narrowing an optional first. It is a class attribute shared by every subclass, which is why both fields are immutable and `event_ids` is a tuple.
 - **The outcome rides on the slice, so `do()` keeps its `-> TSlice` signature.** Returning a union would break the base class contract and every on-demand view route, which depend on `do()` handing the perspective back.

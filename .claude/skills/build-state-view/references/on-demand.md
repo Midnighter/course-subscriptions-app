@@ -144,14 +144,14 @@ async def snake_case({SliceName})(
 
 Notes on the template:
 
-- **A slice must never define its own application, nor its own dependency factory.** `get_application` is the single dependency; it reads the process-wide `{ProjectName}App` off `request.state` (Step 7 and `CLAUDE.md`).
+- **A slice must never define its own application, nor its own dependency factory.** `get_application` is the single dependency; it reads the process-wide `{ProjectName}App` off `request.state` (Step 7 and `.build-kit/CLAUDE.md`).
 - **`do()` takes an instance and returns it**, having replayed the events matching `consistency_boundary()` through the `@event` handlers and then called `execute()` (a no-op here). It mutates the perspective in place *and* returns it, so `view = app.do(...)` is the documented contract.
 - **`response_model` matches the return type.** The view class is a `Slice`, not a `BaseModel`; map its attributes onto a Pydantic response model explicitly.
 - **The router carries no `prefix`; the full path goes on the decorator.** One greppable path string per slice and no path parameter hidden in a prefix. The slice name lives on in `tags=` and `operation_id=`, which is what links the endpoint back to the slice in the generated spec.
 - **The path parameter takes the entity's own name** (`dog_id`), not a generic `entity_id`. The internal `{SliceName}View(entity_id=…)` keyword is unaffected — that is the projection's own interface, not the public one.
 - **Regenerate the spec once the route is wired in** (Step 7): `hatch run docs:openapi`, then stage `docs/openapi.json` with the rest of the slice.
 
-The FastAPI/Pydantic house rules this template follows (`Annotated[…, Depends(…)]`, `EM101` message variables, runtime imports for Pydantic field types) are in `CLAUDE.md`. Status codes follow the *Error mapping* table in `SKILL.md`.
+The FastAPI/Pydantic house rules this template follows (`Annotated[…, Depends(…)]`, `EM101` message variables, runtime imports for Pydantic field types) are in `.build-kit/CLAUDE.md`. Status codes follow the *Error mapping* table in `SKILL.md`.
 
 ### Collection endpoints
 
@@ -214,7 +214,7 @@ def test_snake_case({SliceName})_reports_not_found_when_no_events() -> None:
 ### GWT API notes
 
 - **Stop at `when()`.** `.then(*TaggedEvent)` compares *emitted* events, which a read-only view has none of — assert on the view's projected attributes instead.
-- Cross-entity isolation can't be tested here (`CLAUDE.md` explains why GWT rejects out-of-boundary histories). Prove it in the **integration suite**: query two entities and assert each returns its own state.
+- Cross-entity isolation can't be tested here (`.build-kit/CLAUDE.md` explains why GWT rejects out-of-boundary histories). Prove it in the **integration suite**: query two entities and assert each returns its own state.
 
 ---
 
@@ -322,7 +322,7 @@ was already using.
 - **Tags scope the boundary; attributes answer the query.** `Selector.tags` narrows the replay to the affected entity; the fields on `self` then reflect that entity's projected state. Never rely on state alone with `tags=[]` unless the read model is genuinely system-wide.
 - **One application for the whole process.** Slices never subclass `DcbApplication`. Each `DcbApplication()` instance gets its *own* in-memory store, so a per-slice application would replay an event store no writer ever writes to — the view would always report the entity absent.
 - **The application's lifetime belongs to the FastAPI lifespan.** `DcbApplication` is a context manager; hold it with `with`, never `lru_cache`, which has no teardown hook and so would skip `close()` (and, under Postgres, the connection-pool teardown).
-- **An on-demand view needs no telemetry code at all.** It has no background thread and no consumer side: the request's HTTP span (from `FastAPIInstrumentor`) already covers it end to end, and the replay it performs shows up as the event-store span. Do not import OpenTelemetry into `projection.py` or `routes.py`, and do not open a span around the replay — that is the materialized approach's concern, not this one.
+- **This slice type adds no telemetry code — it is already covered.** The project is instrumented (Step 0), and an on-demand view has no background thread and no consumer side: the request's HTTP span from `instrument_app` covers it end to end, `do()`'s own span labels the replay, and the reads it performs show up as event-store spans. So do not import OpenTelemetry into `projection.py` or `routes.py`, and do not open a span around the replay — a `consumer_span` is the materialized approach's concern, not this one. Nothing missing here; nothing to add.
 
 ---
 
@@ -333,6 +333,8 @@ docs/
     openapi.json                                          # REGENERATED, not hand-written — `hatch run docs:openapi`
 src/snake_case({ProjectName})/
     main.py                                               # EDITED, not created — one import + one include_router line
+    telemetry.py                                          # SHARED RUNTIME — verified in Step 0; this slice type adds nothing to it
+    application.py                                        # SHARED RUNTIME — verified in Step 0; NOT edited by a slice
 src/snake_case({ProjectName})/snake_case({Context})/
     events.py                                             # shared event Decisions (add new types here; do not remove existing ones)
 src/snake_case({ProjectName})/snake_case({Context})/snake_case({SliceName})/

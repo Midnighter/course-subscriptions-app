@@ -14,7 +14,7 @@ description: Implements a pyeventsourcing automation slice (tracking view + Proj
 >
 > So `CancelExpiredLicense` in the `Backoffice` context reads from `.build-kit/.slices/backoffice/cancelexpiredlicense/slice.json`. Do **not** use the `snake_case(...)` form here — that convention applies to the generated Python paths below, not to this directory. If the path you derive is missing, list the context directory rather than guessing.
 
-Project-wide conventions (tooling, pre-commit, test layout) live in `CLAUDE.md`. Consult it for anything not specific to building a slice.
+Project-wide conventions (tooling, pre-commit, test layout) live in `.build-kit/CLAUDE.md`. Consult it for anything not specific to building a slice.
 
 ---
 
@@ -50,7 +50,26 @@ That loop only closes when the automation subscribes to the *same* application
 the command writes through. A runner that constructs its own `DcbApplication`
 gets a private in-memory store: it never sees its trigger, and the event its own
 command emits never comes back to drain the ledger. That is why Step 5 uses
-`SharedAppProjectionRunner` — see `CLAUDE.md` → *Projection runners*.
+`SharedAppProjectionRunner` — see `.build-kit/CLAUDE.md` → *Projection runners*.
+
+---
+
+## Step 0 — Verify the shared runtime
+
+A slice is built *on* the shared runtime; it never carries a copy of it. Before reading the slice definition, confirm each of these exists under `src/snake_case({ProjectName})/`:
+
+| Module | If missing |
+|--------|------------|
+| `__init__.py` | `.build-kit/CLAUDE.md` → *First-time project setup* |
+| `command.py` | ditto — the command this automation fires subclasses its `CommandSlice` |
+| `telemetry.py` | ditto — the module and its tests are in `.build-kit/references/telemetry.md` |
+| `application.py` | ditto — including the `do()` override and the `command_span` inside it |
+| `main.py` | ditto — including `configure_telemetry()`, `instrument_app()` and `instrument_recorder()` |
+| `projection.py` | `.build-kit/CLAUDE.md` → *Projection runners*; **required** by this slice type — see Step 5 |
+
+A missing module is an incomplete setup, not an opt-out — in particular, **do not skip a slice's instrumentation because `telemetry.py` is absent.** Create what is missing, run the test suites, and commit it on its own as a `chore:` **before** starting the slice: a shared-runtime module folded into a `feat:` commit is unreviewable and reads as slice-specific when it is not.
+
+If everything is present, change nothing. Import from these modules and move on.
 
 ---
 
@@ -443,10 +462,10 @@ crash); `causation_id` is the **trigger event's own uuid**, naming the direct ca
 invent for those. Deriving the metadata at the call site instead of inside `_fire` is
 what lets both paths share one method.
 
-### Telemetry — skip if the project has no `telemetry.py`
+### Telemetry — wrap `process_event` in a consumer span
 
-Wrap the `match` in `process_event` in a single `consumer_span(envelope, ...)`, as
-`build-state-view`'s materialized reference describes. That one span buys the whole
+Wrap the `match` in `process_event` in a single `consumer_span(envelope, ...)` — the
+shape is in `.build-kit/references/telemetry.md` → *Inside a `Projection`*. That one span buys the whole
 causal chain here, because `_fire` runs **inside** it: the command it issues opens its
 own span under the consumer span, and the events that command emits inherit the
 `traceparent` from the contextvar — so a trace runs trigger event → automation →
@@ -574,7 +593,7 @@ answer to both. It subclasses `BaseProjectionRunner`, which takes an
 **already-constructed** `projection`, `app`, and `tracking_recorder` — exactly the seam an
 injected port needs — and it overrides `__exit__` to not close the application it was
 handed. Create that module if it does not exist yet; it is shared runtime, written once
-per project, never generated per slice. See `CLAUDE.md` → *Projection runners* for what
+per project, never generated per slice. See `.build-kit/CLAUDE.md` → *Projection runners* for what
 it must guarantee.
 
 Building the view by hand is the one thing `ProjectionRunner` was legitimately doing for
@@ -712,7 +731,7 @@ async with AsyncExitStack() as stack:
 
 File: `tests/acceptance/snake_case({Context})/snake_case({SliceName})/test_snake_case({SliceName}).py`
 
-GWT cannot drive a `Projection` (see `CLAUDE.md`), so construct the view and
+GWT cannot drive a `Projection` (see `.build-kit/CLAUDE.md`), so construct the view and
 projection directly and call `process_event` yourself. Pass a recording fake as
 the command port — no app, no runner, no thread:
 
@@ -816,7 +835,7 @@ subscribes to the application the lifespan opened, so that is the only store who
 appends it can see.
 
 If the project has an HTTP surface, take both the app and the view from the real
-`create_app()`'s lifespan state via the shared `client` fixture (see `CLAUDE.md` →
+`create_app()`'s lifespan state via the shared `client` fixture (see `.build-kit/CLAUDE.md` →
 *Test layout*):
 
 ```python
@@ -987,7 +1006,8 @@ worth writing.
 
 ```
 src/snake_case({ProjectName})/
-    projection.py                     # SharedAppProjectionRunner + ProjectionSupervisor (create ONLY if absent; never per-slice)
+    projection.py                     # SHARED RUNTIME — SharedAppProjectionRunner + ProjectionSupervisor (create ONLY if absent; never per-slice)
+    telemetry.py                      # SHARED RUNTIME — verified in Step 0; supplies `consumer_span`, never written per-slice
 
 src/snake_case({ProjectName})/snake_case({Context})/snake_case({SliceName})/
     __init__.py
@@ -1041,4 +1061,5 @@ The command slice under
 - [ ] The seeded event carries every tag the command slice's boundary selects on
 - [ ] The `drain()` recovery test builds its own view and app, consuming the position **before** any runner is constructed
 - [ ] No `routes.py` created (automations are not exposed via HTTP)
-- [ ] If the project has `telemetry.py`: `process_event`'s `match` is wrapped in one `consumer_span(envelope, ...)` that re-raises, and `_fire`'s narrow guard is left untouched
+- [ ] Step 0 ran: `command.py`, `telemetry.py`, `application.py`, `main.py` and `projection.py` all exist, and anything created there was committed as a `chore:` before this slice
+- [ ] `process_event`'s `match` is wrapped in one `consumer_span(envelope, ...)` that re-raises, and `_fire`'s narrow guard is left untouched

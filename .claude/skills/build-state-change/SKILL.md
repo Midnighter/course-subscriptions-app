@@ -14,7 +14,7 @@ description: Implements a pyeventsourcing state-change slice (Slice, FastAPI rou
 >
 > So `AdminCancelLicense` in the `Backoffice` context reads from `.build-kit/.slices/backoffice/admincancellicense/slice.json`. Do **not** use the `snake_case(...)` form here — that convention applies to the generated Python paths below, not to this directory. If the path you derive is missing, list the context directory rather than guessing.
 
-Project-wide conventions (tooling, pre-commit, test layout) live in `CLAUDE.md`. Consult it for anything not specific to building a slice.
+Project-wide conventions (tooling, pre-commit, test layout) live in `.build-kit/CLAUDE.md`. Consult it for anything not specific to building a slice.
 
 ---
 
@@ -26,6 +26,25 @@ A state-change slice processes a command using event sourcing. It:
 3. Emits new events if valid, raises if not
 
 The slice is expressed as an `eventsourcing.pydantic.Slice` subclass and invoked via **the project's one central application**, `{ProjectName}App` in `src/snake_case({ProjectName})/application.py`. A slice never defines an application of its own — see **Key patterns**.
+
+---
+
+## Step 0 — Verify the shared runtime
+
+A slice is built *on* the shared runtime; it never carries a copy of it. Before reading the slice definition, confirm each of these exists under `src/snake_case({ProjectName})/`:
+
+| Module | If missing |
+|--------|------------|
+| `__init__.py` | `.build-kit/CLAUDE.md` → *First-time project setup* |
+| `command.py` | ditto — this slice type subclasses its `CommandSlice` |
+| `telemetry.py` | ditto — the module and its tests are in `.build-kit/references/telemetry.md` |
+| `application.py` | ditto — including the `do()` override and the `command_span` inside it |
+| `main.py` | ditto — including `configure_telemetry()`, `instrument_app()` and `instrument_recorder()` |
+| `projection.py` | not used by this slice type; leave it alone if absent |
+
+A missing module is an incomplete setup, not an opt-out — in particular, **do not skip a slice's instrumentation because `telemetry.py` is absent.** Create what is missing, run the test suites, and commit it on its own as a `chore:` **before** starting the slice: a shared-runtime module folded into a `feat:` commit is unreviewable and reads as slice-specific when it is not.
+
+If everything is present, change nothing. Import from these modules and move on.
 
 ---
 
@@ -58,7 +77,7 @@ Filesystem paths, Python module names, and method names are **derived from the P
 
 Apply these transforms mechanically; do not introduce new placeholder tokens.
 
-**The URL is not on this list.** It is not derived from `{SliceName}` at all — a slice name is a build artefact, and publishing it as the address frames the command as data editing. The path comes from the slice's consistency boundary and its business intention; Step 4 below works it out, and the rule lives in `CLAUDE.md` → *API addressing*.
+**The URL is not on this list.** It is not derived from `{SliceName}` at all — a slice name is a build artefact, and publishing it as the address frames the command as data editing. The path comes from the slice's consistency boundary and its business intention; Step 4 below works it out, and the rule lives in `.build-kit/CLAUDE.md` → *API addressing*.
 
 ---
 
@@ -82,7 +101,7 @@ class {EventName}(Decision):
     # data fields from slice.json — use snake_case even if slice.json uses camelCase
 ```
 
-> The template omits the copyright header and module docstring for brevity. Every real file needs them — commit the result and let pre-commit surface anything you missed (see `CLAUDE.md`).
+> The template omits the copyright header and module docstring for brevity. Every real file needs them — commit the result and let pre-commit surface anything you missed (see `.build-kit/CLAUDE.md`).
 
 Add each new event type to this module. Do NOT remove existing ones.
 
@@ -106,7 +125,7 @@ Pick the tag values from the command arguments — never invent them, never deri
 | Two entities together (rare) | `[f"user:{user_id}", f"orga:{orga_id}"]` |
 | **Truly global** (a system-wide invariant, e.g. singleton config) | `[]` — and justify it in the docstring |
 
-The same tags must be attached at **emission time** via `trigger_event(..., tags=...)` — see the **Selector tags ⊆ trigger tags** rule in `CLAUDE.md`. Get this wrong and the invariant silently breaks.
+The same tags must be attached at **emission time** via `trigger_event(..., tags=...)` — see the **Selector tags ⊆ trigger tags** rule in `.build-kit/CLAUDE.md`. Get this wrong and the invariant silently breaks.
 
 ### Full structure
 
@@ -183,7 +202,7 @@ File: `src/snake_case({ProjectName})/snake_case({Context})/snake_case({SliceName
 
 ### Choose the address first
 
-The URL names the **business intention**, not the slice. Work it out before writing the module; the full rule and its table live in `CLAUDE.md` → *API addressing*. In short:
+The URL names the **business intention**, not the slice. Work it out before writing the module; the full rule and its table live in `.build-kit/CLAUDE.md` → *API addressing*. In short:
 
 1. **Take the entity from `_tags()`** — the decision you already made in Step 3. `tags=[f"licence:{licence_id}"]` gives `/licences/{licence_id}`. Pluralise the tag kind and kebab-case it. A path whose entity disagrees with the boundary tag is a bug.
 2. **Nominalise the command's verb** into a plural noun of intent: `AdminCancelLicense` → `cancellation-requests`. Where that reads badly, use `{verb}-requests`.
@@ -197,7 +216,7 @@ RegisterUser (id generated by the command)
     -> POST /user-registrations
 ```
 
-4. **Check the path is free.** `grep` it in `docs/openapi.json` — the committed spec is the source of truth for what already exists (`CLAUDE.md` → *The OpenAPI spec is the source of truth*). A collision means a different intention noun, or a mis-identified entity. On the very first slice the file does not exist yet; that is expected.
+4. **Check the path is free.** `grep` it in `docs/openapi.json` — the committed spec is the source of truth for what already exists (`.build-kit/CLAUDE.md` → *The OpenAPI spec is the source of truth*). A collision means a different intention noun, or a mis-identified entity. On the very first slice the file does not exist yet; that is expected.
 
 ### Full structure
 
@@ -258,7 +277,7 @@ async def snake_case({SliceName})(
 
 Notes on the template:
 
-- **A slice must never define its own application, nor its own dependency factory.** `get_application` is the single dependency; it reads the process-wide `{ProjectName}App` off `request.state` (Step 7 and `CLAUDE.md`).
+- **A slice must never define its own application, nor its own dependency factory.** `get_application` is the single dependency; it reads the process-wide `{ProjectName}App` off `request.state` (Step 7 and `.build-kit/CLAUDE.md`).
 - **The router carries no `prefix`; the full path goes on the decorator.** One greppable path string per slice, no path parameter hidden in a prefix, and no trailing-slash wart. The slice name lives on in `tags=` and `operation_id=`, which is what links the endpoint back to the slice in the generated spec.
 - **The entity id is a path parameter and must not also be a body field.** It reaches the slice as an explicit keyword argument next to `**body.model_dump()`. A command with no entity to nest under (`POST /user-registrations`) keeps every field in the body and drops the path parameter.
 - **Regenerate the spec once the route exists**: `hatch run docs:openapi`, then stage `docs/openapi.json` with the rest of the slice. The pre-commit hook will do it for you if you forget, but it will fail the commit doing so.
@@ -327,7 +346,7 @@ def test_snake_case({SliceName})_raises_when_already_processed() -> None:
 ### GWT API notes
 
 - `then()` compares `TaggedEvent` **instances**, not classes. Construct the expected event with the same fields **and the same tags** the slice would emit.
-- Cross-entity isolation can't be tested here (`CLAUDE.md` explains why GWT rejects out-of-boundary histories). Prove it in the **integration suite**: post two commands with different entity ids and assert both succeed.
+- Cross-entity isolation can't be tested here (`.build-kit/CLAUDE.md` explains why GWT rejects out-of-boundary histories). Prove it in the **integration suite**: post two commands with different entity ids and assert both succeed.
 
 ---
 
@@ -423,9 +442,9 @@ Once the router is included the route exists on the real app, so **regenerate th
 hatch run docs:openapi     # rewrites docs/openapi.json
 ```
 
-`docs/openapi.json` is the project's record of what URLs exist (`CLAUDE.md` → *The OpenAPI spec is the source of truth*). Confirm the diff adds exactly the path you intended and changes nothing else — a diff that *moves* an existing endpoint means this slice took a path another one was already using.
+`docs/openapi.json` is the project's record of what URLs exist (`.build-kit/CLAUDE.md` → *The OpenAPI spec is the source of truth*). Confirm the diff adds exactly the path you intended and changes nothing else — a diff that *moves* an existing endpoint means this slice took a path another one was already using.
 
-If the project is instrumented, `create_app()` already calls `configure_telemetry()` and `FastAPIInstrumentor.instrument_app(app)`, and `application.py` already overrides `do()`. Those are process-wide, written once, and **not** per-slice edits — leave them alone; your slice inherits them for free.
+`create_app()` already calls `configure_telemetry()` and `instrument_app(app)`, and `application.py` already overrides `do()` with a `command_span` around it — Step 0 established that. Those are process-wide, written once, and **not** per-slice edits: leave them alone. Your slice inherits its command span, and the trace context on every event it emits, for free. Route handlers add no telemetry code.
 
 ---
 
@@ -448,6 +467,9 @@ docs/
     openapi.json                                          # REGENERATED, not hand-written — `hatch run docs:openapi`
 src/snake_case({ProjectName})/
     main.py                                               # EDITED, not created — one import + one include_router line
+    command.py                                            # SHARED RUNTIME — verified in Step 0; never written per-slice
+    telemetry.py                                          # SHARED RUNTIME — verified in Step 0; never written per-slice
+    application.py                                        # SHARED RUNTIME — verified in Step 0; NOT edited by a slice
 src/snake_case({ProjectName})/snake_case({Context})/
     events.py                                             # add new event `Decision` here (shared across slices)
 src/snake_case({ProjectName})/snake_case({Context})/snake_case({SliceName})/

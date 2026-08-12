@@ -14,7 +14,7 @@ description: Implements a pyeventsourcing state-view slice (read model / project
 >
 > So `ViewDogProfile` in the `Kennel` context reads from `.build-kit/.slices/kennel/viewdogprofile/slice.json`. Do **not** use the `snake_case(...)` form here — that convention applies to the generated Python paths below, not to this directory. If the path you derive is missing, list the context directory rather than guessing.
 
-Project-wide conventions (tooling, pre-commit, test layout) live in `CLAUDE.md`. Consult it for anything not specific to building a slice.
+Project-wide conventions (tooling, pre-commit, test layout) live in `.build-kit/CLAUDE.md`. Consult it for anything not specific to building a slice.
 
 ---
 
@@ -30,6 +30,25 @@ This can be done in one of two broad ways:
 2. **Materialized**: The projection is built in the background and is stored in a standalone `TrackingRecorder` — backed either by `POPOTrackingRecorder` (in-memory, the default) or `PostgresTrackingRecorder` (durable). This allows for faster queries, avoids hitting the event store on every query, but it also means that the view may be stale if the background process hasn't caught up with the event store and requires additional infrastructure.
 
 Check any comments in the slice definition for guidance on which approach to use. If none is given, default to **on-demand**.
+
+---
+
+## Step 0 — Verify the shared runtime
+
+A slice is built *on* the shared runtime; it never carries a copy of it. Before reading the slice definition, confirm each of these exists under `src/snake_case({ProjectName})/`:
+
+| Module | If missing |
+|--------|------------|
+| `__init__.py` | `.build-kit/CLAUDE.md` → *First-time project setup* |
+| `command.py` | ditto — a view slice stays on plain `Slice`, but `do()` imports it |
+| `telemetry.py` | ditto — the module and its tests are in `.build-kit/references/telemetry.md` |
+| `application.py` | ditto — including the `do()` override and the `command_span` inside it |
+| `main.py` | ditto — including `configure_telemetry()`, `instrument_app()` and `instrument_recorder()` |
+| `projection.py` | `.build-kit/CLAUDE.md` → *Projection runners*; needed by the **materialized** approach only |
+
+A missing module is an incomplete setup, not an opt-out — in particular, **do not skip a slice's instrumentation because `telemetry.py` is absent.** Create what is missing, run the test suites, and commit it on its own as a `chore:` **before** starting the slice: a shared-runtime module folded into a `feat:` commit is unreviewable and reads as slice-specific when it is not.
+
+If everything is present, change nothing. Import from these modules and move on.
 
 ---
 
@@ -70,7 +89,7 @@ Apply these transforms mechanically; do not introduce new placeholder tokens.
 
 ## Addressing the view
 
-This applies to **both** approaches. Work the URL out before writing the route; the full rule and its table live in `CLAUDE.md` → *API addressing*.
+This applies to **both** approaches. Work the URL out before writing the route; the full rule and its table live in `.build-kit/CLAUDE.md` → *API addressing*.
 
 A view is addressed by **the situation the reader is looking at**, never by the projection that produces it. `/view-dog-profile/{entity_id}` names a build artefact and forces the client to know how the read model was implemented; `/dogs/{dog_id}/profile` names what they asked for.
 
@@ -84,7 +103,7 @@ ViewHostArrivals   + tags=[f"host:{host_id}"]  ->  GET /hosts/{host_id}/upcoming
 SearchAvailableStays (no single entity)        ->  GET /available-stays?from=…&to=…
 ```
 
-4. **Check the path is free.** `grep` it in `docs/openapi.json` — the committed spec is the source of truth for what already exists (`CLAUDE.md` → *The OpenAPI spec is the source of truth*). Two views over the same entity are fine and expected (`/dogs/{dog_id}/profile` and `/dogs/{dog_id}/history`); two views on the *same path* are a bug.
+4. **Check the path is free.** `grep` it in `docs/openapi.json` — the committed spec is the source of truth for what already exists (`.build-kit/CLAUDE.md` → *The OpenAPI spec is the source of truth*). Two views over the same entity are fine and expected (`/dogs/{dog_id}/profile` and `/dogs/{dog_id}/history`); two views on the *same path* are a bug.
 
 The slice name still has to be traceable, so it moves into the OpenAPI metadata: `tags=["snake_case({SliceName})"]` on the router and `operation_id="snake_case({SliceName})"` on the route.
 
@@ -110,7 +129,7 @@ class {EventName}(Decision):
     # data fields from slice.json — use snake_case even if slice.json uses camelCase
 ```
 
-> The template omits the copyright header and module docstring for brevity. Every real file needs them — commit the result and let pre-commit surface anything you missed (see `CLAUDE.md`).
+> The template omits the copyright header and module docstring for brevity. Every real file needs them — commit the result and let pre-commit surface anything you missed (see `.build-kit/CLAUDE.md`).
 
 If the view depends on an event type that isn't in `events.py` yet, add it. Never remove existing event types.
 
@@ -132,7 +151,7 @@ Pick the tag values from the query arguments — never invent them, never derive
 | Two entities together (rare) | `[f"user:{user_id}", f"orga:{orga_id}"]` |
 | **Truly global** (system-wide dashboard, singleton config) | `[]` — and justify it in the docstring |
 
-Whatever you pick must satisfy the **Selector tags ⊆ trigger tags** rule in `CLAUDE.md` — check the emitting slice's `trigger_event(..., tags=...)` call, not just the slice.json.
+Whatever you pick must satisfy the **Selector tags ⊆ trigger tags** rule in `.build-kit/CLAUDE.md` — check the emitting slice's `trigger_event(..., tags=...)` call, not just the slice.json.
 
 ---
 
