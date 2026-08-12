@@ -1,7 +1,7 @@
 {
   "id": "c7e3531c-3409-45d8-82c7-28eee7cb954a",
   "title": "Register Course",
-  "status": "Planned",
+  "status": "Done",
   "sliceType": "STATE_CHANGE",
   "chapter": "Course Subscriptions",
   "context": "Course Subscriptions",
@@ -264,7 +264,7 @@
       ],
       "then": [
         {
-          "id": "84c7d435-2c6d-42e0-89f5-d31b7c48bac5",
+          "id": "48e6cf91-75c6-4631-8752-900b759e1aff",
           "title": "Course already registered",
           "description": "A course with this courseId already exists",
           "type": "SPEC_ERROR",

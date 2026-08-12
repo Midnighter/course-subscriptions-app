@@ -248,7 +248,7 @@
       ],
       "then": [
         {
-          "id": "89f70afe-b5c4-44d7-a7b0-c0dea305c8c8",
+          "id": "b1b5c76f-3077-4433-9792-495d8049b938",
           "title": "Unknown course",
           "description": "Course does not exist",
           "type": "SPEC_ERROR",
@@ -312,7 +312,7 @@
       ],
       "then": [
         {
-          "id": "73f8d098-f75b-4a01-b183-4d0229cac007",
+          "id": "b8fd9e08-c439-426f-9691-6f2dd91ad755",
           "title": "Same capacity \u2014 rejected",
           "description": "New capacity equals current capacity",
           "type": "SPEC_ERROR",
@@ -471,7 +471,7 @@
       ],
       "then": [
         {
-          "id": "43ef2d4c-143a-4b42-877e-aaa4dd5cdeea",
+          "id": "acefb92b-713b-41ee-be9a-098779557126",
           "title": "Cannot reduce capacity below current subscriptions",
           "description": "Course already has 3 subscriptions",
           "type": "SPEC_ERROR",

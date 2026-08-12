@@ -58,6 +58,30 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "RegisterCourseRequest": {
+        "description": "Request body for the Register Course command.",
+        "properties": {
+          "capacity": {
+            "title": "Capacity",
+            "type": "integer"
+          },
+          "course_id": {
+            "title": "Course Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "course_id",
+          "title",
+          "capacity"
+        ],
+        "title": "RegisterCourseRequest",
+        "type": "object"
+      },
       "StudentCourseSubscriptionsResponse": {
         "description": "Response body for the Student Course Subscriptions query.",
         "properties": {
@@ -152,6 +176,51 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/course-registrations": {
+      "post": {
+        "description": "Register a new course with a capacity limit on concurrent subscriptions.",
+        "operationId": "register_course",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterCourseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "204": {
+            "description": "The command recorded nothing."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register Course",
+        "tags": [
+          "register_course"
+        ]
+      }
+    },
     "/courses/{course_id}/capacity-changes": {
       "post": {
         "description": "Change the capacity limit on concurrent subscriptions for a course.",

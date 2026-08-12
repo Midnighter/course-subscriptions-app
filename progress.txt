@@ -179,3 +179,48 @@
 - Slice complete: marked "Done" in `index.json` and `slice.json`. Committed
   as `feat: Change Course Capacity` on `feature/changecoursecapacity` and
   fast-forward merged into `restart`.
+
+## 2026-08-12 - Register Course (STATE_CHANGE) - iteration start
+
+- Session start: found `.build-kit/.slices/course-subscriptions/*.json` (index.json
+  and all per-slice slice.json files) truncated to bare `{id, title, status}` stubs
+  in the working tree again - same corruption pattern as prior iterations. This time
+  restored via the board's `/slicedata` API (contextName=Course Subscriptions)
+  rather than `git checkout`, since HEAD's committed version could itself be stale
+  relative to the board (see next point).
+- Discovered the previous iteration's board sync for "Change Course Capacity" had
+  failed (documented in progress.txt as a transient Internal Server Error), so the
+  live board still showed it as "InProgress" while the local commit already said
+  "Done". Restoring straight from the board API would have silently regressed the
+  local status back to InProgress. Fixed by keeping "Done" locally and retrying the
+  `update_slice_status` sync (curl fallback, no MCP tools visible this session) -
+  succeeded this time, board now shows "Done" too.
+- Picked highest-priority Planned slice: "Register Course" (index 3, STATE_CHANGE).
+  Marked InProgress in index.json, slice.json, and via curl fallback node:changed
+  event (sliceStatus).
+- No pre-existing `feature/registercourse` branch. Creating fresh from `restart`
+  (per AGENTS.md: `restart` is the branch with the live board-tracking lineage,
+  not `main` - do not merge into or rebase onto `main` without asking a human).
+- Dispatching to `build-state-change` skill next.
+- `CourseRegistered` already existed in `events.py` from an earlier slice - no new
+  event type needed, only a new slice package.
+- Consistency boundary tag: `course:{course_id}`, create-once invariant
+  (`self.registered = False/True`). Command has no id to nest under (it creates the
+  entity), so per the API addressing rule the route sits at root: `POST
+  /course-registrations`.
+- Files added: `register_course/{__init__.py,slice.py,routes.py}`,
+  `tests/acceptance/course_subscriptions/register_course/test_register_course.py`,
+  `tests/integration/course_subscriptions/test_register_course.py`. Wired
+  `register_course_routes.router` into `main.py`. Regenerated `docs/openapi.json`
+  (purely additive: one new path `/course-registrations` + `RegisterCourseRequest`
+  schema).
+- No unspecified zero-capacity validation added: the slice's command has an
+  unresolved board comment about zero-capacity but no corresponding SPEC_ERROR, so
+  (per the precedent set in the Change Course Capacity iteration) only the two
+  specified scenarios were implemented.
+- Scoped checks green: style (ruff + pydoclint), types (pyrefly), acceptance (14
+  passed), integration (16 passed), plus full unit-tests (1 passed) as a
+  nice-to-have. No dependency changes, so no lock-file regeneration needed.
+- Slice complete: marked "Done" in `index.json` and `registercourse/slice.json`.
+  Committed as `feat: Register Course` on `feature/registercourse` and
+  fast-forward merged into `restart`.

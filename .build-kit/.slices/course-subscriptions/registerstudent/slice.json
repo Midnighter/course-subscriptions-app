@@ -365,7 +365,7 @@
       ],
       "then": [
         {
-          "id": "04f51f44-03ba-42a9-b4ef-5727949d3f03",
+          "id": "11ce18d6-ada2-4af8-b7c9-6b4ca4aa05ae",
           "title": "Student already registered",
           "description": "Student already registered",
           "type": "SPEC_ERROR",

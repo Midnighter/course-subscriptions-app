@@ -274,7 +274,7 @@
       ],
       "then": [
         {
-          "id": "3da8f025-f454-4b71-906d-b01314996e8f",
+          "id": "077203c7-ebd0-434d-aa3e-7b8df0ac714e",
           "title": "Unknown course",
           "description": "Course does not exist",
           "type": "SPEC_ERROR",
@@ -357,7 +357,7 @@
       ],
       "then": [
         {
-          "id": "c26ed3c1-bede-4955-8c59-5eddbbf28434",
+          "id": "2046c139-07e5-4d16-9fc2-b3d598114667",
           "title": "Not subscribed",
           "description": "Student is not subscribed to this course",
           "type": "SPEC_ERROR",

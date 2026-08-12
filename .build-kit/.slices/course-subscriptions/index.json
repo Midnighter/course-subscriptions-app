@@ -683,7 +683,7 @@
             ],
             "then": [
               {
-                "id": "3da8f025-f454-4b71-906d-b01314996e8f",
+                "id": "077203c7-ebd0-434d-aa3e-7b8df0ac714e",
                 "title": "Unknown course",
                 "description": "Course does not exist",
                 "type": "SPEC_ERROR",
@@ -766,7 +766,7 @@
             ],
             "then": [
               {
-                "id": "c26ed3c1-bede-4955-8c59-5eddbbf28434",
+                "id": "2046c139-07e5-4d16-9fc2-b3d598114667",
                 "title": "Not subscribed",
                 "description": "Student is not subscribed to this course",
                 "type": "SPEC_ERROR",
@@ -1039,7 +1039,7 @@
             ],
             "then": [
               {
-                "id": "89f70afe-b5c4-44d7-a7b0-c0dea305c8c8",
+                "id": "b1b5c76f-3077-4433-9792-495d8049b938",
                 "title": "Unknown course",
                 "description": "Course does not exist",
                 "type": "SPEC_ERROR",
@@ -1103,7 +1103,7 @@
             ],
             "then": [
               {
-                "id": "73f8d098-f75b-4a01-b183-4d0229cac007",
+                "id": "b8fd9e08-c439-426f-9691-6f2dd91ad755",
                 "title": "Same capacity \u2014 rejected",
                 "description": "New capacity equals current capacity",
                 "type": "SPEC_ERROR",
@@ -1262,7 +1262,7 @@
             ],
             "then": [
               {
-                "id": "43ef2d4c-143a-4b42-877e-aaa4dd5cdeea",
+                "id": "acefb92b-713b-41ee-be9a-098779557126",
                 "title": "Cannot reduce capacity below current subscriptions",
                 "description": "Course already has 3 subscriptions",
                 "type": "SPEC_ERROR",
@@ -1284,11 +1284,11 @@
       "contextName": "Course Subscriptions",
       "contextSlug": "course-subscriptions",
       "folder": "registercourse",
-      "status": "Planned",
+      "status": "Done",
       "definition": {
         "id": "c7e3531c-3409-45d8-82c7-28eee7cb954a",
         "title": "Register Course",
-        "status": "Planned",
+        "status": "Done",
         "sliceType": "STATE_CHANGE",
         "chapter": "Course Subscriptions",
         "context": "Course Subscriptions",
@@ -1551,7 +1551,7 @@
             ],
             "then": [
               {
-                "id": "84c7d435-2c6d-42e0-89f5-d31b7c48bac5",
+                "id": "48e6cf91-75c6-4631-8752-900b759e1aff",
                 "title": "Course already registered",
                 "description": "A course with this courseId already exists",
                 "type": "SPEC_ERROR",
@@ -2398,7 +2398,7 @@
             ],
             "then": [
               {
-                "id": "87901fff-9687-4951-8d33-bcad8426295c",
+                "id": "f3a0a8e8-4bc0-4ed2-bb5f-30b163651eed",
                 "title": "Unknown course",
                 "description": "Course does not exist",
                 "type": "SPEC_ERROR",
@@ -2465,7 +2465,7 @@
             ],
             "then": [
               {
-                "id": "6678242a-df1b-4e19-9bf7-837e0f036891",
+                "id": "ec8ca887-473d-4be4-a877-4179447d05b6",
                 "title": "Course is full (capacity 2 \u2192 3rd rejected)",
                 "description": "Course capacity is full",
                 "type": "SPEC_ERROR",
@@ -2523,7 +2523,7 @@
             ],
             "then": [
               {
-                "id": "45396c91-0078-4d05-85dd-7cb450975585",
+                "id": "25d19513-c1ed-46ec-9283-bb8fd549a50d",
                 "title": "Already subscribed",
                 "description": "Student already subscribed to this course",
                 "type": "SPEC_ERROR",
@@ -2648,7 +2648,7 @@
             ],
             "then": [
               {
-                "id": "a70a7cb8-e456-42db-9c2d-030a80522cdf",
+                "id": "3af844e0-f946-471d-8f93-ad63541bb273",
                 "title": "Student at subscription limit (2)",
                 "description": "Student has reached subscription limit (2)",
                 "type": "SPEC_ERROR",
@@ -3038,7 +3038,7 @@
             ],
             "then": [
               {
-                "id": "04f51f44-03ba-42a9-b4ef-5727949d3f03",
+                "id": "11ce18d6-ada2-4af8-b7c9-6b4ca4aa05ae",
                 "title": "Student already registered",
                 "description": "Student already registered",
                 "type": "SPEC_ERROR",

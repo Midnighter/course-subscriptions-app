@@ -267,7 +267,7 @@
       ],
       "then": [
         {
-          "id": "87901fff-9687-4951-8d33-bcad8426295c",
+          "id": "f3a0a8e8-4bc0-4ed2-bb5f-30b163651eed",
           "title": "Unknown course",
           "description": "Course does not exist",
           "type": "SPEC_ERROR",
@@ -334,7 +334,7 @@
       ],
       "then": [
         {
-          "id": "6678242a-df1b-4e19-9bf7-837e0f036891",
+          "id": "ec8ca887-473d-4be4-a877-4179447d05b6",
           "title": "Course is full (capacity 2 \u2192 3rd rejected)",
           "description": "Course capacity is full",
           "type": "SPEC_ERROR",
@@ -392,7 +392,7 @@
       ],
       "then": [
         {
-          "id": "45396c91-0078-4d05-85dd-7cb450975585",
+          "id": "25d19513-c1ed-46ec-9283-bb8fd549a50d",
           "title": "Already subscribed",
           "description": "Student already subscribed to this course",
           "type": "SPEC_ERROR",
@@ -517,7 +517,7 @@
       ],
       "then": [
         {
-          "id": "a70a7cb8-e456-42db-9c2d-030a80522cdf",
+          "id": "3af844e0-f946-471d-8f93-ad63541bb273",
           "title": "Student at subscription limit (2)",
           "description": "Student has reached subscription limit (2)",
           "type": "SPEC_ERROR",
