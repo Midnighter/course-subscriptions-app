@@ -1,0 +1,169 @@
+{
+  "id": "4183215f-a32c-4f32-9db6-7c228875124a",
+  "title": "Student to Register",
+  "status": "Created",
+  "sliceType": "STATE_VIEW",
+  "chapter": "Course Subscriptions",
+  "context": "Course Subscriptions",
+  "commands": [],
+  "events": [
+    {
+      "id": "86cfaf05-305c-4915-a4e8-a30e2f8a393b",
+      "title": "Student Registered",
+      "type": "EVENT",
+      "fields": [
+        {
+          "name": "studentId",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": true,
+          "idAttribute": true,
+          "type": "String",
+          "cardinality": "Single",
+          "subfields": []
+        },
+        {
+          "name": "name",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": true,
+          "idAttribute": false,
+          "type": "String",
+          "cardinality": "Single",
+          "subfields": []
+        },
+        {
+          "name": "courseLimit",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": true,
+          "idAttribute": false,
+          "type": "Int",
+          "cardinality": "Single",
+          "subfields": []
+        }
+      ],
+      "dependencies": [
+        {
+          "id": "90b30461-f799-45ca-8963-31334ca1444b",
+          "type": "OUTBOUND",
+          "title": "Student to Register",
+          "elementType": "READMODEL"
+        }
+      ],
+      "modelContext": "Course Subscriptions",
+      "lane": "Registrar",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "triggers": [],
+      "tags": [],
+      "slice": "Student to Register",
+      "description": "",
+      "context": "EXTERNAL",
+      "elementContext": "EXTERNAL",
+      "listElement": false,
+      "todoList": false,
+      "createsAggregate": false,
+      "elementCopy": false,
+      "sketched": false,
+      "comments": [
+        "Invent examples for the given fields."
+      ]
+    }
+  ],
+  "readmodels": [
+    {
+      "id": "90b30461-f799-45ca-8963-31334ca1444b",
+      "title": "Student to Register",
+      "type": "READMODEL",
+      "fields": [
+        {
+          "name": "studentId",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": true,
+          "idAttribute": true,
+          "type": "String",
+          "cardinality": "Single",
+          "subfields": []
+        },
+        {
+          "name": "name",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": true,
+          "idAttribute": false,
+          "type": "String",
+          "cardinality": "Single",
+          "subfields": []
+        },
+        {
+          "name": "courseLimit",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": true,
+          "idAttribute": false,
+          "type": "Int",
+          "cardinality": "Single",
+          "subfields": []
+        }
+      ],
+      "dependencies": [
+        {
+          "id": "838679bb-f7fa-43ae-8ce4-a20c6d2f76b0",
+          "type": "OUTBOUND",
+          "title": "Register Student",
+          "elementType": "AUTOMATION"
+        },
+        {
+          "id": "86cfaf05-305c-4915-a4e8-a30e2f8a393b",
+          "type": "INBOUND",
+          "title": "Student Registered",
+          "elementType": "EVENT"
+        }
+      ],
+      "modelContext": "Course Subscriptions",
+      "lane": "Interaction",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "triggers": [],
+      "tags": [],
+      "slice": "Student to Register",
+      "description": "",
+      "context": "INTERNAL",
+      "elementContext": "INTERNAL",
+      "listElement": false,
+      "todoList": false,
+      "createsAggregate": false,
+      "elementCopy": false,
+      "sketched": false,
+      "comments": []
+    }
+  ],
+  "screens": [],
+  "processors": [],
+  "tables": [],
+  "specifications": [],
+  "actors": [],
+  "aggregates": [],
+  "screenImages": [],
+  "comments": []
+}

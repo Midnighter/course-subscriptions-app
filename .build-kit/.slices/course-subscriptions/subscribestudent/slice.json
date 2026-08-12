@@ -1,0 +1,533 @@
+{
+  "id": "0aaedf9d-e5d0-4bc6-b2d2-d3f6e6dd1945",
+  "title": "Subscribe Student",
+  "status": "Planned",
+  "sliceType": "STATE_CHANGE",
+  "chapter": "Course Subscriptions",
+  "context": "Course Subscriptions",
+  "commands": [
+    {
+      "id": "62d0042c-95c9-4666-a371-7365e990a916",
+      "title": "Subscribe Student",
+      "type": "COMMAND",
+      "fields": [
+        {
+          "name": "courseId",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": false,
+          "idAttribute": true,
+          "type": "String",
+          "cardinality": "Single",
+          "subfields": []
+        },
+        {
+          "name": "studentId",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": true,
+          "idAttribute": true,
+          "type": "String",
+          "cardinality": "Single",
+          "subfields": []
+        }
+      ],
+      "dependencies": [
+        {
+          "id": "82f616d3-e7f1-4180-942d-e6f40a7b021b",
+          "type": "OUTBOUND",
+          "title": "Student Subscribed",
+          "elementType": "EVENT"
+        },
+        {
+          "id": "883b579f-e298-479f-87ac-2e7c8b9b3344",
+          "type": "INBOUND",
+          "elementType": "HTML_SCREEN"
+        }
+      ],
+      "modelContext": "Course Subscriptions",
+      "lane": "Interaction",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "triggers": [],
+      "tags": [],
+      "slice": "Subscribe Student",
+      "description": "",
+      "context": "INTERNAL",
+      "elementContext": "INTERNAL",
+      "listElement": false,
+      "todoList": false,
+      "createsAggregate": false,
+      "elementCopy": false,
+      "sketched": false,
+      "comments": [
+        "Subscription limit is modelled as 2, but the dcb.events spec says a student cannot join more than 10 courses, while the Kraken reference implementation uses STUDENT_SUBSCRIPTION_LIMIT = 5. Which number is correct for this domain?"
+      ]
+    }
+  ],
+  "events": [
+    {
+      "id": "82f616d3-e7f1-4180-942d-e6f40a7b021b",
+      "title": "Student Subscribed",
+      "type": "EVENT",
+      "fields": [
+        {
+          "name": "courseId",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": false,
+          "idAttribute": true,
+          "type": "String",
+          "cardinality": "Single",
+          "subfields": []
+        },
+        {
+          "name": "studentId",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": true,
+          "idAttribute": true,
+          "type": "String",
+          "cardinality": "Single",
+          "subfields": []
+        }
+      ],
+      "dependencies": [
+        {
+          "id": "238ec7a0-2d4b-43db-a341-96b0f6ff5f2a",
+          "type": "OUTBOUND",
+          "title": "Course Catalogue",
+          "elementType": "READMODEL"
+        },
+        {
+          "id": "62d0042c-95c9-4666-a371-7365e990a916",
+          "type": "INBOUND",
+          "title": "Subscribe Student",
+          "elementType": "COMMAND"
+        },
+        {
+          "id": "6553e990-da3f-4882-8deb-8591a4c5de30",
+          "type": "OUTBOUND",
+          "title": "Student Course Subscriptions",
+          "elementType": "READMODEL"
+        },
+        {
+          "id": "bd20fbd8-e49e-4a88-8f01-e3eeb578406d",
+          "type": "OUTBOUND",
+          "title": "Course Catalogue",
+          "elementType": "READMODEL"
+        }
+      ],
+      "modelContext": "Course Subscriptions",
+      "lane": "Course Subscriptions",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "triggers": [],
+      "tags": [],
+      "slice": "Subscribe Student",
+      "description": "",
+      "context": "INTERNAL",
+      "elementContext": "INTERNAL",
+      "listElement": false,
+      "todoList": false,
+      "createsAggregate": false,
+      "elementCopy": false,
+      "sketched": false,
+      "comments": []
+    }
+  ],
+  "readmodels": [],
+  "screens": [
+    {
+      "id": "883b579f-e298-479f-87ac-2e7c8b9b3344",
+      "title": "",
+      "type": "HTML_SCREEN",
+      "fields": [],
+      "dependencies": [
+        {
+          "id": "62d0042c-95c9-4666-a371-7365e990a916",
+          "type": "OUTBOUND",
+          "title": "Subscribe Student",
+          "elementType": "COMMAND"
+        }
+      ],
+      "modelContext": "Course Subscriptions",
+      "lane": "Student",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "triggers": [],
+      "tags": [],
+      "slice": "Subscribe Student",
+      "description": "",
+      "context": "INTERNAL",
+      "elementContext": "INTERNAL",
+      "listElement": false,
+      "todoList": false,
+      "createsAggregate": false,
+      "elementCopy": false,
+      "sketched": false,
+      "comments": []
+    }
+  ],
+  "processors": [],
+  "tables": [],
+  "specifications": [
+    {
+      "id": "d1d11111-1111-4111-8111-111111111111",
+      "title": "Subscribed \u2014 happy path",
+      "chapter": "Course Subscriptions",
+      "sliceName": "Subscribe Student",
+      "vertical": false,
+      "expectEmptyList": false,
+      "examples": [],
+      "given": [
+        {
+          "id": "fa61ded0-04f7-4e1e-bad8-b471bccd4519",
+          "title": "Course Registered",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": []
+        },
+        {
+          "id": "61404409-49a0-4d3c-9ee5-3392cad0f24a",
+          "title": "Student Registered",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": []
+        }
+      ],
+      "when": [
+        {
+          "id": "62d0042c-95c9-4666-a371-7365e990a916",
+          "title": "Subscribe Student",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "COMMAND",
+          "fields": []
+        }
+      ],
+      "then": [
+        {
+          "id": "82f616d3-e7f1-4180-942d-e6f40a7b021b",
+          "title": "Student Subscribed",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "d1d22222-2222-4222-8222-222222222222",
+      "title": "Unknown course",
+      "chapter": "Course Subscriptions",
+      "sliceName": "Subscribe Student",
+      "vertical": false,
+      "expectEmptyList": false,
+      "examples": [],
+      "given": [
+        {
+          "id": "61404409-49a0-4d3c-9ee5-3392cad0f24a",
+          "title": "Student Registered",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": []
+        }
+      ],
+      "when": [
+        {
+          "id": "62d0042c-95c9-4666-a371-7365e990a916",
+          "title": "Subscribe Student",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "COMMAND",
+          "fields": []
+        }
+      ],
+      "then": [
+        {
+          "id": "87901fff-9687-4951-8d33-bcad8426295c",
+          "title": "Unknown course",
+          "description": "Course does not exist",
+          "type": "SPEC_ERROR",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "d1d33333-3333-4333-8333-333333333333",
+      "title": "Course is full (capacity 2 \u2192 3rd rejected)",
+      "chapter": "Course Subscriptions",
+      "sliceName": "Subscribe Student",
+      "vertical": false,
+      "expectEmptyList": false,
+      "examples": [],
+      "given": [
+        {
+          "id": "fa61ded0-04f7-4e1e-bad8-b471bccd4519",
+          "title": "Course Registered",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": []
+        },
+        {
+          "id": "61404409-49a0-4d3c-9ee5-3392cad0f24a",
+          "title": "Student Registered",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": []
+        },
+        {
+          "id": "82f616d3-e7f1-4180-942d-e6f40a7b021b",
+          "title": "Student Subscribed",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": []
+        },
+        {
+          "id": "82f616d3-e7f1-4180-942d-e6f40a7b021b",
+          "title": "Student Subscribed",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": []
+        }
+      ],
+      "when": [
+        {
+          "id": "62d0042c-95c9-4666-a371-7365e990a916",
+          "title": "Subscribe Student",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "COMMAND",
+          "fields": []
+        }
+      ],
+      "then": [
+        {
+          "id": "6678242a-df1b-4e19-9bf7-837e0f036891",
+          "title": "Course is full (capacity 2 \u2192 3rd rejected)",
+          "description": "Course capacity is full",
+          "type": "SPEC_ERROR",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "d1d44444-4444-4444-8444-444444444444",
+      "title": "Already subscribed",
+      "chapter": "Course Subscriptions",
+      "sliceName": "Subscribe Student",
+      "vertical": false,
+      "expectEmptyList": false,
+      "examples": [],
+      "given": [
+        {
+          "id": "fa61ded0-04f7-4e1e-bad8-b471bccd4519",
+          "title": "Course Registered",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": []
+        },
+        {
+          "id": "61404409-49a0-4d3c-9ee5-3392cad0f24a",
+          "title": "Student Registered",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": []
+        },
+        {
+          "id": "82f616d3-e7f1-4180-942d-e6f40a7b021b",
+          "title": "Student Subscribed",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": []
+        }
+      ],
+      "when": [
+        {
+          "id": "62d0042c-95c9-4666-a371-7365e990a916",
+          "title": "Subscribe Student",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "COMMAND",
+          "fields": []
+        }
+      ],
+      "then": [
+        {
+          "id": "45396c91-0078-4d05-85dd-7cb450975585",
+          "title": "Already subscribed",
+          "description": "Student already subscribed to this course",
+          "type": "SPEC_ERROR",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "d1d55555-5555-4555-8555-555555555555",
+      "title": "Student at subscription limit (2)",
+      "chapter": "Course Subscriptions",
+      "sliceName": "Subscribe Student",
+      "vertical": false,
+      "expectEmptyList": false,
+      "examples": [],
+      "given": [
+        {
+          "id": "fa61ded0-04f7-4e1e-bad8-b471bccd4519",
+          "title": "Course Registered",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": [
+            {
+              "name": "capacity",
+              "example": "10"
+            },
+            {
+              "name": "courseId",
+              "example": "EM-2024-001"
+            },
+            {
+              "name": "title",
+              "example": "Intro to Event Modeling"
+            }
+          ],
+          "expectEmptyList": false
+        },
+        {
+          "id": "82f616d3-e7f1-4180-942d-e6f40a7b021b",
+          "title": "Student Subscribed",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": [
+            {
+              "name": "courseId",
+              "example": "EM-2024-001"
+            },
+            {
+              "name": "studentId",
+              "example": "STU-2026-0042"
+            }
+          ],
+          "expectEmptyList": false
+        },
+        {
+          "id": "82f616d3-e7f1-4180-942d-e6f40a7b021b",
+          "title": "Student Subscribed",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": [
+            {
+              "name": "courseId",
+              "example": "EM-2024-002"
+            },
+            {
+              "name": "studentId",
+              "example": "STU-2026-0042"
+            }
+          ],
+          "expectEmptyList": false
+        },
+        {
+          "id": "c46bbeba-ea84-485a-985e-db44734e6add",
+          "title": "Student Registered",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": [
+            {
+              "name": "studentId",
+              "example": "STU-2026-0042"
+            },
+            {
+              "name": "name",
+              "example": "Anna M\u00fcller"
+            },
+            {
+              "name": "courseLimit",
+              "example": "2"
+            }
+          ],
+          "expectEmptyList": false
+        }
+      ],
+      "when": [
+        {
+          "id": "62d0042c-95c9-4666-a371-7365e990a916",
+          "title": "Subscribe Student",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "COMMAND",
+          "fields": [
+            {
+              "name": "courseId",
+              "example": "EM-2024-003"
+            },
+            {
+              "name": "studentId",
+              "example": "STU-2026-0042"
+            }
+          ],
+          "expectEmptyList": false
+        }
+      ],
+      "then": [
+        {
+          "id": "a70a7cb8-e456-42db-9c2d-030a80522cdf",
+          "title": "Student at subscription limit (2)",
+          "description": "Student has reached subscription limit (2)",
+          "type": "SPEC_ERROR",
+          "fields": []
+        }
+      ]
+    }
+  ],
+  "actors": [],
+  "aggregates": [],
+  "screenImages": [],
+  "comments": []
+}

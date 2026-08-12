@@ -11,10 +11,10 @@ requires = ["hatchling", "hatch-vcs"]
 ################################################################################
 
 [project]
-name = "TODO"
+name = "course-subscriptions"
 dynamic = ["version"]
-description = ""
-authors = [{ name = "", email = "" }]
+description = "Event-sourced course subscription management system."
+authors = [{ name = "Moritz E. Beber", email = "midnighter@posteo.net" }]
 license = "Apache-2.0"
 readme = { "file" = "README.md", "content-type" = "text/markdown" }
 requires-python = ">=3.14"
@@ -60,10 +60,10 @@ integration = [{include-group = "tests"}, "httpx2"]
 only-packages = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/TODO"]
+packages = ["src/course_subscriptions"]
 
 [tool.hatch.build.hooks.vcs]
-version-file = "src/TODO/_version.py"
+version-file = "src/course_subscriptions/_version.py"
 
 [tool.hatch.version]
 source = "vcs"
@@ -73,12 +73,12 @@ testpaths = ["tests"]
 markers = ["raises"]
 
 [tool.coverage.paths]
-source = ["src/TODO", "*/site-packages/TODO"]
+source = ["src/course_subscriptions", "*/site-packages/course_subscriptions"]
 
 [tool.coverage.run]
 branch = true
 parallel = true
-omit = ["src/TODO/_version.py"]
+omit = ["src/course_subscriptions/_version.py"]
 
 [tool.coverage.report]
 exclude_lines = ["pragma: no cover"]
@@ -97,7 +97,7 @@ ignore = [
     "ANN002", # 'Missing type annotation for {*args} in method'.
     "ANN003", # 'Missing type annotation for {*kwargs} in method'.
 ]
-exclude = ["src/TODO/_version.py"]
+exclude = ["src/course_subscriptions/_version.py"]
 
 [tool.ruff.lint.extend-per-file-ignores]
 "__init__.py" = [
@@ -115,7 +115,7 @@ exclude = ["src/TODO/_version.py"]
 
 [tool.ruff.lint.isort]
 case-sensitive = true
-known-first-party = ["src", "TODO"]
+known-first-party = ["src", "course_subscriptions"]
 
 [tool.pydoclint]
 style = "google"
@@ -190,7 +190,7 @@ dependency-groups = ["types"]
 features = ["telemetry"]
 
 [tool.hatch.envs.types.scripts]
-check = ["pyrefly check src/TODO"]
+check = ["pyrefly check src/course_subscriptions"]
 
 [tool.hatch.envs.docs]
 description = """Build or serve the documentation."""
@@ -200,28 +200,28 @@ dependency-groups = ["docs"]
 build = "mkdocs build {args:--clean --strict}"
 serve = "mkdocs serve {args}"
 deploy = "mike deploy {args}"
-openapi = '''python -c "import json, pathlib; from TODO.main import create_app; pathlib.Path('docs/openapi.json').write_text(json.dumps(create_app().openapi(), indent=2, sort_keys=True))"'''
+openapi = '''python -c "import json, pathlib; from course_subscriptions.main import create_app; pathlib.Path('docs/openapi.json').write_text(json.dumps(create_app().openapi(), indent=2, sort_keys=True))"'''
 
 [tool.hatch.envs.unit-tests]
 description = """Run the unit tests."""
 dependency-groups = ["tests"]
 
 [tool.hatch.envs.unit-tests.scripts]
-run = "pytest {args:--cov=TODO --cov-report=term-missing} {root}/tests/unit"
+run = "pytest {args:--cov=course_subscriptions --cov-report=term-missing} {root}/tests/unit"
 
 [tool.hatch.envs.acceptance-tests]
 description = """Run the acceptance tests."""
 dependency-groups = ["tests"]
 
 [tool.hatch.envs.acceptance-tests.scripts]
-run = "pytest {args:--cov=TODO --cov-report=term-missing} {root}/tests/acceptance"
+run = "pytest {args:--cov=course_subscriptions --cov-report=term-missing} {root}/tests/acceptance"
 
 [tool.hatch.envs.integration-tests]
 description = """Run the integration tests."""
 dependency-groups = ["integration"]
 
 [tool.hatch.envs.integration-tests.scripts]
-run = "pytest {args:--cov=TODO --cov-report=term-missing} {root}/tests/integration"
+run = "pytest {args:--cov=course_subscriptions --cov-report=term-missing} {root}/tests/integration"
 
 [tool.hatch.envs.documentation-tests]
 description = """Run the documentation tests."""
@@ -229,4 +229,4 @@ dependency-groups = ["tests"]
 extra-dependencies = ["mktestdocs"]
 
 [tool.hatch.envs.documentation-tests.scripts]
-run = "pytest {args:--cov=TODO --cov-report=term-missing} {root}/tests/documentation"
+run = "pytest {args:--cov=course_subscriptions --cov-report=term-missing} {root}/tests/documentation"

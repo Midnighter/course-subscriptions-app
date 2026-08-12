@@ -1,0 +1,117 @@
+{
+  "id": "fac33170-de70-4647-a599-a921c44a01e2",
+  "title": "Course Catalogue",
+  "status": "Blocked",
+  "sliceType": "STATE_VIEW",
+  "chapter": "Course Subscriptions",
+  "context": "Course Subscriptions",
+  "commands": [],
+  "events": [],
+  "readmodels": [
+    {
+      "id": "bd20fbd8-e49e-4a88-8f01-e3eeb578406d",
+      "title": "Course Catalogue",
+      "type": "READMODEL",
+      "fields": [
+        {
+          "name": "capacity",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": false,
+          "idAttribute": false,
+          "type": "Int",
+          "cardinality": "Single",
+          "subfields": []
+        },
+        {
+          "name": "courseId",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": true,
+          "idAttribute": true,
+          "type": "String",
+          "cardinality": "Single",
+          "subfields": []
+        },
+        {
+          "name": "title",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": false,
+          "idAttribute": false,
+          "type": "String",
+          "cardinality": "Single",
+          "subfields": []
+        },
+        {
+          "name": "numberOfSubscriptions",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": true,
+          "edited": false,
+          "idAttribute": false,
+          "type": "Int",
+          "cardinality": "Single",
+          "subfields": []
+        }
+      ],
+      "dependencies": [
+        {
+          "id": "82f616d3-e7f1-4180-942d-e6f40a7b021b",
+          "type": "INBOUND",
+          "title": "Student Subscribed",
+          "elementType": "EVENT"
+        },
+        {
+          "id": "3f17cdee-7718-4f8a-82cc-d0a1e12c2a1f",
+          "type": "INBOUND",
+          "title": "Course Capacity Changed",
+          "elementType": "EVENT"
+        },
+        {
+          "id": "7c495a9e-8566-427c-b91b-e670e8799292",
+          "type": "OUTBOUND",
+          "elementType": "HTML_SCREEN"
+        }
+      ],
+      "modelContext": "Course Subscriptions",
+      "lane": "Interaction",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "triggers": [],
+      "tags": [],
+      "slice": "Course Catalogue",
+      "description": "",
+      "context": "INTERNAL",
+      "elementContext": "INTERNAL",
+      "listElement": true,
+      "todoList": false,
+      "createsAggregate": false,
+      "elementCopy": false,
+      "sketched": false,
+      "comments": [
+        "After 10 consecutive Ralph iterations flagged this as unresolved, determination: this is a leftover/incomplete duplicate of column D's \"Course Catalogue\" slice (d30964fa-e955-4edd-a3bb-25e956575b0d), not an intentional second consumer. Evidence: identical readmodel title/fields, but this node's inbound dependencies (Student Subscribed, Course Capacity Changed) are a strict subset of column D's (which also has Course Registered, Student Unsubscribed) \u2014 consistent with an earlier/partial version of the same model that was superseded when column D was completed. No specifications, commands, or screen were ever attached here. Building a second `/course-catalogue` route would collide with the one already implemented from column D.\n\nSetting slice status to \"Blocked\" (rather than leaving it \"Planned\" forever) so the build loop stops re-picking an unbuildable stub. Recommended next step for a human modeler: delete this column/slice from the board, or explicitly wire up a distinct screen/actor if it truly is meant to be a second consumer.",
+        "This \"Course Catalogue\" read model (column G) duplicates the one in column D (both titled \"Course Catalogue\", and this one links back to the same node via data.linkedTo) but has no screen/actor connected here. Is this an intentional second consumer of the read model, or a leftover/incomplete duplicate that should be removed or merged into column D's slice?"
+      ]
+    }
+  ],
+  "screens": [],
+  "processors": [],
+  "tables": [],
+  "specifications": [],
+  "actors": [],
+  "aggregates": [],
+  "screenImages": [],
+  "comments": []
+}

@@ -1,0 +1,487 @@
+{
+  "id": "9c31851a-1b99-4a50-b0ba-621599def7a6",
+  "title": "Change Course Capacity",
+  "status": "Planned",
+  "sliceType": "STATE_CHANGE",
+  "chapter": "Course Subscriptions",
+  "context": "Course Subscriptions",
+  "commands": [
+    {
+      "id": "f7040bec-4db4-4a73-bd6d-b85befa8533b",
+      "title": "Change Course Capacity",
+      "type": "COMMAND",
+      "fields": [
+        {
+          "name": "capacity",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": false,
+          "idAttribute": false,
+          "type": "Number",
+          "cardinality": "Single",
+          "subfields": []
+        },
+        {
+          "name": "courseId",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": false,
+          "idAttribute": true,
+          "type": "String",
+          "cardinality": "Single",
+          "subfields": []
+        }
+      ],
+      "dependencies": [
+        {
+          "id": "3f17cdee-7718-4f8a-82cc-d0a1e12c2a1f",
+          "type": "OUTBOUND",
+          "title": "Course Capacity Changed",
+          "elementType": "EVENT"
+        },
+        {
+          "id": "eefd7fca-8a1b-41b6-9ef7-985f1a3c9e3a",
+          "type": "INBOUND",
+          "elementType": "HTML_SCREEN"
+        }
+      ],
+      "modelContext": "Course Subscriptions",
+      "lane": "Interaction",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "triggers": [],
+      "tags": [],
+      "slice": "Change Course Capacity",
+      "description": "",
+      "context": "INTERNAL",
+      "elementContext": "INTERNAL",
+      "listElement": false,
+      "todoList": false,
+      "createsAggregate": false,
+      "elementCopy": false,
+      "sketched": false,
+      "comments": [
+        "What happens when a course capacity is changed to a value below the current subscriberCount? Are existing subscriptions kept as an overcap, or should some be automatically unsubscribed / rejected?"
+      ]
+    }
+  ],
+  "events": [
+    {
+      "id": "3f17cdee-7718-4f8a-82cc-d0a1e12c2a1f",
+      "title": "Course Capacity Changed",
+      "type": "EVENT",
+      "fields": [
+        {
+          "name": "capacity",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": false,
+          "idAttribute": false,
+          "type": "Number",
+          "cardinality": "Single",
+          "subfields": []
+        },
+        {
+          "name": "courseId",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": false,
+          "idAttribute": true,
+          "type": "String",
+          "cardinality": "Single",
+          "subfields": []
+        }
+      ],
+      "dependencies": [
+        {
+          "id": "238ec7a0-2d4b-43db-a341-96b0f6ff5f2a",
+          "type": "OUTBOUND",
+          "title": "Course Catalogue",
+          "elementType": "READMODEL"
+        },
+        {
+          "id": "f7040bec-4db4-4a73-bd6d-b85befa8533b",
+          "type": "INBOUND",
+          "title": "Change Course Capacity",
+          "elementType": "COMMAND"
+        },
+        {
+          "id": "bd20fbd8-e49e-4a88-8f01-e3eeb578406d",
+          "type": "OUTBOUND",
+          "title": "Course Catalogue",
+          "elementType": "READMODEL"
+        }
+      ],
+      "modelContext": "Course Subscriptions",
+      "lane": "Course Subscriptions",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "triggers": [],
+      "tags": [],
+      "slice": "Change Course Capacity",
+      "description": "",
+      "context": "INTERNAL",
+      "elementContext": "INTERNAL",
+      "listElement": false,
+      "todoList": false,
+      "createsAggregate": false,
+      "elementCopy": false,
+      "sketched": false,
+      "comments": []
+    }
+  ],
+  "readmodels": [],
+  "screens": [
+    {
+      "id": "eefd7fca-8a1b-41b6-9ef7-985f1a3c9e3a",
+      "title": "",
+      "type": "HTML_SCREEN",
+      "fields": [],
+      "dependencies": [
+        {
+          "id": "f7040bec-4db4-4a73-bd6d-b85befa8533b",
+          "type": "OUTBOUND",
+          "title": "Change Course Capacity",
+          "elementType": "COMMAND"
+        },
+        {
+          "id": "238ec7a0-2d4b-43db-a341-96b0f6ff5f2a",
+          "type": "INBOUND",
+          "title": "Course Catalogue",
+          "elementType": "READMODEL"
+        }
+      ],
+      "modelContext": "Course Subscriptions",
+      "lane": "Course Manager",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "triggers": [],
+      "tags": [],
+      "slice": "Change Course Capacity",
+      "description": "",
+      "context": "INTERNAL",
+      "elementContext": "INTERNAL",
+      "listElement": false,
+      "todoList": false,
+      "createsAggregate": false,
+      "elementCopy": false,
+      "sketched": false,
+      "comments": []
+    }
+  ],
+  "processors": [],
+  "tables": [],
+  "specifications": [
+    {
+      "id": "c1c11111-1111-4111-8111-111111111111",
+      "title": "Capacity changed \u2014 happy path",
+      "chapter": "Course Subscriptions",
+      "sliceName": "Change Course Capacity",
+      "vertical": false,
+      "expectEmptyList": false,
+      "examples": [],
+      "given": [
+        {
+          "id": "fa61ded0-04f7-4e1e-bad8-b471bccd4519",
+          "title": "Course Registered",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": []
+        }
+      ],
+      "when": [
+        {
+          "id": "f7040bec-4db4-4a73-bd6d-b85befa8533b",
+          "title": "Change Course Capacity",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "COMMAND",
+          "fields": []
+        }
+      ],
+      "then": [
+        {
+          "id": "3f17cdee-7718-4f8a-82cc-d0a1e12c2a1f",
+          "title": "Course Capacity Changed",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "c1c22222-2222-4222-8222-222222222222",
+      "title": "Unknown course",
+      "chapter": "Course Subscriptions",
+      "sliceName": "Change Course Capacity",
+      "vertical": false,
+      "expectEmptyList": false,
+      "examples": [],
+      "given": [],
+      "when": [
+        {
+          "id": "f7040bec-4db4-4a73-bd6d-b85befa8533b",
+          "title": "Change Course Capacity",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "COMMAND",
+          "fields": []
+        }
+      ],
+      "then": [
+        {
+          "id": "89f70afe-b5c4-44d7-a7b0-c0dea305c8c8",
+          "title": "Unknown course",
+          "description": "Course does not exist",
+          "type": "SPEC_ERROR",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "c1c33333-3333-4333-8333-333333333333",
+      "title": "Same capacity \u2014 rejected",
+      "chapter": "Course Subscriptions",
+      "sliceName": "Change Course Capacity",
+      "vertical": false,
+      "expectEmptyList": false,
+      "examples": [],
+      "given": [
+        {
+          "id": "fa61ded0-04f7-4e1e-bad8-b471bccd4519",
+          "title": "Course Registered",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": [
+            {
+              "name": "capacity",
+              "example": "10"
+            },
+            {
+              "name": "courseId",
+              "example": "EM-2024-001"
+            },
+            {
+              "name": "title",
+              "example": "Intro to Event Modeling"
+            }
+          ],
+          "expectEmptyList": false
+        }
+      ],
+      "when": [
+        {
+          "id": "f7040bec-4db4-4a73-bd6d-b85befa8533b",
+          "title": "Change Course Capacity",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "COMMAND",
+          "fields": [
+            {
+              "name": "capacity",
+              "example": "10"
+            },
+            {
+              "name": "courseId",
+              "example": "EM-2024-001"
+            }
+          ],
+          "expectEmptyList": false
+        }
+      ],
+      "then": [
+        {
+          "id": "73f8d098-f75b-4a01-b183-4d0229cac007",
+          "title": "Same capacity \u2014 rejected",
+          "description": "New capacity equals current capacity",
+          "type": "SPEC_ERROR",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "c29b2771-e53d-4bf8-bd1e-b579478fd515",
+      "title": "Cannot reduce capacity below current subscriptions",
+      "chapter": "Course Subscriptions",
+      "sliceName": "Change Course Capacity",
+      "vertical": false,
+      "expectEmptyList": false,
+      "examples": [],
+      "given": [
+        {
+          "id": "fa61ded0-04f7-4e1e-bad8-b471bccd4519",
+          "title": "Course Registered",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": [
+            {
+              "name": "capacity",
+              "example": "10"
+            },
+            {
+              "name": "courseId",
+              "example": "c-1"
+            },
+            {
+              "name": "title",
+              "example": "Intro to Event Modeling"
+            }
+          ],
+          "expectEmptyList": false
+        },
+        {
+          "id": "82f616d3-e7f1-4180-942d-e6f40a7b021b",
+          "title": "Student Subscribed",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": [
+            {
+              "name": "courseId",
+              "example": "c-1"
+            },
+            {
+              "name": "studentId",
+              "example": "s-1"
+            }
+          ],
+          "expectEmptyList": false
+        },
+        {
+          "id": "82f616d3-e7f1-4180-942d-e6f40a7b021b",
+          "title": "Student Subscribed",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": [
+            {
+              "name": "courseId",
+              "example": "c-1"
+            },
+            {
+              "name": "studentId",
+              "example": "s-2"
+            }
+          ],
+          "expectEmptyList": false
+        },
+        {
+          "id": "82f616d3-e7f1-4180-942d-e6f40a7b021b",
+          "title": "Student Subscribed",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": [
+            {
+              "name": "courseId",
+              "example": "c-1"
+            },
+            {
+              "name": "studentId",
+              "example": "s-3"
+            }
+          ],
+          "expectEmptyList": false
+        },
+        {
+          "id": "82f616d3-e7f1-4180-942d-e6f40a7b021b",
+          "title": "Student Subscribed",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": [
+            {
+              "name": "courseId",
+              "example": "c-1"
+            },
+            {
+              "name": "studentId",
+              "example": "s-4"
+            }
+          ],
+          "expectEmptyList": false
+        },
+        {
+          "id": "87280fae-4195-46df-896b-d848a7cca71d",
+          "title": "Student Unsubscribed",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": [
+            {
+              "name": "courseId",
+              "example": "c-1"
+            },
+            {
+              "name": "studentId",
+              "example": "s-4"
+            }
+          ],
+          "expectEmptyList": false
+        }
+      ],
+      "when": [
+        {
+          "id": "f7040bec-4db4-4a73-bd6d-b85befa8533b",
+          "title": "Change Course Capacity",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "COMMAND",
+          "fields": [
+            {
+              "name": "capacity",
+              "example": "2"
+            },
+            {
+              "name": "courseId",
+              "example": "c-1"
+            }
+          ],
+          "expectEmptyList": false
+        }
+      ],
+      "then": [
+        {
+          "id": "43ef2d4c-143a-4b42-877e-aaa4dd5cdeea",
+          "title": "Cannot reduce capacity below current subscriptions",
+          "description": "Course already has 3 subscriptions",
+          "type": "SPEC_ERROR",
+          "fields": []
+        }
+      ]
+    }
+  ],
+  "actors": [],
+  "aggregates": [],
+  "screenImages": [],
+  "comments": []
+}

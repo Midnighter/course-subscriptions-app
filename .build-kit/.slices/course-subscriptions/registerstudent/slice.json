@@ -1,0 +1,381 @@
+{
+  "id": "4d3728b0-0af0-45d4-889b-c6c43fd1b3c1",
+  "title": "Register Student",
+  "status": "Planned",
+  "sliceType": "AUTOMATION",
+  "chapter": "Course Subscriptions",
+  "context": "Course Subscriptions",
+  "commands": [
+    {
+      "id": "d5050bbe-6e7b-4aad-bcd9-23c67ea37769",
+      "title": "Register Student",
+      "type": "COMMAND",
+      "fields": [
+        {
+          "name": "studentId",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": true,
+          "idAttribute": true,
+          "type": "String",
+          "cardinality": "Single",
+          "subfields": []
+        },
+        {
+          "name": "name",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": true,
+          "idAttribute": false,
+          "type": "String",
+          "cardinality": "Single",
+          "subfields": []
+        },
+        {
+          "name": "courseLimit",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": true,
+          "idAttribute": false,
+          "type": "Int",
+          "cardinality": "Single",
+          "subfields": []
+        }
+      ],
+      "dependencies": [
+        {
+          "id": "c46bbeba-ea84-485a-985e-db44734e6add",
+          "type": "OUTBOUND",
+          "title": "Student Registered",
+          "elementType": "EVENT"
+        },
+        {
+          "id": "838679bb-f7fa-43ae-8ce4-a20c6d2f76b0",
+          "type": "INBOUND",
+          "title": "Register Student",
+          "elementType": "AUTOMATION"
+        }
+      ],
+      "modelContext": "Course Subscriptions",
+      "lane": "Interaction",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "triggers": [],
+      "tags": [],
+      "slice": "Register Student",
+      "description": "",
+      "context": "INTERNAL",
+      "elementContext": "INTERNAL",
+      "listElement": false,
+      "todoList": false,
+      "createsAggregate": false,
+      "elementCopy": false,
+      "sketched": false,
+      "comments": []
+    }
+  ],
+  "events": [
+    {
+      "id": "c46bbeba-ea84-485a-985e-db44734e6add",
+      "title": "Student Registered",
+      "type": "EVENT",
+      "fields": [
+        {
+          "name": "studentId",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": true,
+          "idAttribute": true,
+          "type": "String",
+          "cardinality": "Single",
+          "subfields": []
+        },
+        {
+          "name": "name",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": true,
+          "idAttribute": false,
+          "type": "String",
+          "cardinality": "Single",
+          "subfields": []
+        },
+        {
+          "name": "courseLimit",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": true,
+          "idAttribute": false,
+          "type": "Int",
+          "cardinality": "Single",
+          "subfields": []
+        }
+      ],
+      "dependencies": [
+        {
+          "id": "d5050bbe-6e7b-4aad-bcd9-23c67ea37769",
+          "type": "INBOUND",
+          "title": "Register Student",
+          "elementType": "COMMAND"
+        },
+        {
+          "id": "6553e990-da3f-4882-8deb-8591a4c5de30",
+          "type": "OUTBOUND",
+          "title": "Student Course Subscriptions",
+          "elementType": "READMODEL"
+        }
+      ],
+      "modelContext": "Course Subscriptions",
+      "lane": "Course Subscriptions",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "triggers": [],
+      "tags": [],
+      "slice": "Register Student",
+      "description": "",
+      "context": "INTERNAL",
+      "elementContext": "INTERNAL",
+      "listElement": false,
+      "todoList": false,
+      "createsAggregate": false,
+      "elementCopy": false,
+      "sketched": false,
+      "comments": []
+    }
+  ],
+  "readmodels": [],
+  "screens": [],
+  "processors": [
+    {
+      "id": "838679bb-f7fa-43ae-8ce4-a20c6d2f76b0",
+      "title": "Register Student",
+      "type": "AUTOMATION",
+      "fields": [
+        {
+          "name": "studentId",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": true,
+          "idAttribute": true,
+          "type": "String",
+          "cardinality": "Single",
+          "subfields": []
+        },
+        {
+          "name": "name",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": true,
+          "idAttribute": false,
+          "type": "String",
+          "cardinality": "Single",
+          "subfields": []
+        },
+        {
+          "name": "courseLimit",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": true,
+          "idAttribute": false,
+          "type": "Int",
+          "cardinality": "Single",
+          "subfields": []
+        }
+      ],
+      "dependencies": [
+        {
+          "id": "90b30461-f799-45ca-8963-31334ca1444b",
+          "type": "INBOUND",
+          "title": "Student to Register",
+          "elementType": "READMODEL"
+        },
+        {
+          "id": "d5050bbe-6e7b-4aad-bcd9-23c67ea37769",
+          "type": "OUTBOUND",
+          "title": "Register Student",
+          "elementType": "COMMAND"
+        }
+      ],
+      "modelContext": "Course Subscriptions",
+      "lane": "Student",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "triggers": [],
+      "tags": [],
+      "slice": "Register Student",
+      "description": "",
+      "context": "INTERNAL",
+      "elementContext": "INTERNAL",
+      "listElement": false,
+      "todoList": false,
+      "createsAggregate": false,
+      "elementCopy": false,
+      "sketched": false,
+      "comments": [
+        "[QUESTION] What triggers a student to be registered \u2014 is this something the student does themselves, or does another system set it off?"
+      ]
+    }
+  ],
+  "tables": [],
+  "specifications": [
+    {
+      "id": "2d19b9f7-07c9-4377-8455-5d2d136c52d7",
+      "title": "Register student - happy path",
+      "chapter": "Course Subscriptions",
+      "sliceName": "Register Student",
+      "vertical": false,
+      "expectEmptyList": false,
+      "examples": [],
+      "given": [],
+      "when": [
+        {
+          "id": "d5050bbe-6e7b-4aad-bcd9-23c67ea37769",
+          "title": "Register Student",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "COMMAND",
+          "fields": [
+            {
+              "name": "studentId",
+              "example": "STU-2026-0042"
+            },
+            {
+              "name": "name",
+              "example": "Anna M\u00fcller"
+            },
+            {
+              "name": "courseLimit",
+              "example": "2"
+            }
+          ],
+          "expectEmptyList": false
+        }
+      ],
+      "then": [
+        {
+          "id": "c46bbeba-ea84-485a-985e-db44734e6add",
+          "title": "Student Registered",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": [
+            {
+              "name": "studentId",
+              "example": "STU-2026-0042"
+            },
+            {
+              "name": "name",
+              "example": "Anna M\u00fcller"
+            },
+            {
+              "name": "courseLimit",
+              "example": "2"
+            }
+          ],
+          "expectEmptyList": false
+        }
+      ]
+    },
+    {
+      "id": "c27e7c0b-bf3e-4fa6-a861-d42f5565f8a3",
+      "title": "Student already registered",
+      "chapter": "Course Subscriptions",
+      "sliceName": "Register Student",
+      "vertical": false,
+      "expectEmptyList": false,
+      "examples": [],
+      "given": [
+        {
+          "id": "c46bbeba-ea84-485a-985e-db44734e6add",
+          "title": "Student Registered",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": [
+            {
+              "name": "studentId",
+              "example": "STU-2026-0042"
+            },
+            {
+              "name": "name",
+              "example": "Anna M\u00fcller"
+            },
+            {
+              "name": "courseLimit",
+              "example": "2"
+            }
+          ],
+          "expectEmptyList": false
+        }
+      ],
+      "when": [
+        {
+          "id": "d5050bbe-6e7b-4aad-bcd9-23c67ea37769",
+          "title": "Register Student",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "COMMAND",
+          "fields": [
+            {
+              "name": "studentId",
+              "example": "STU-2026-0042"
+            },
+            {
+              "name": "name",
+              "example": "Anna M\u00fcller"
+            },
+            {
+              "name": "courseLimit",
+              "example": "2"
+            }
+          ],
+          "expectEmptyList": false
+        }
+      ],
+      "then": [
+        {
+          "id": "04f51f44-03ba-42a9-b4ef-5727949d3f03",
+          "title": "Student already registered",
+          "description": "Student already registered",
+          "type": "SPEC_ERROR",
+          "fields": []
+        }
+      ]
+    }
+  ],
+  "actors": [],
+  "aggregates": [],
+  "screenImages": [],
+  "comments": []
+}

@@ -1,0 +1,280 @@
+{
+  "id": "c7e3531c-3409-45d8-82c7-28eee7cb954a",
+  "title": "Register Course",
+  "status": "Planned",
+  "sliceType": "STATE_CHANGE",
+  "chapter": "Course Subscriptions",
+  "context": "Course Subscriptions",
+  "commands": [
+    {
+      "id": "2bf24483-ee27-434f-b4ab-6e46a9c50f2d",
+      "title": "Register Course",
+      "type": "COMMAND",
+      "fields": [
+        {
+          "name": "capacity",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": false,
+          "idAttribute": false,
+          "type": "Number",
+          "cardinality": "Single",
+          "subfields": []
+        },
+        {
+          "name": "title",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": false,
+          "idAttribute": false,
+          "type": "String",
+          "cardinality": "Single",
+          "subfields": []
+        },
+        {
+          "name": "courseId",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": false,
+          "idAttribute": true,
+          "type": "String",
+          "cardinality": "Single",
+          "subfields": []
+        }
+      ],
+      "dependencies": [
+        {
+          "id": "fa61ded0-04f7-4e1e-bad8-b471bccd4519",
+          "type": "OUTBOUND",
+          "title": "Course Registered",
+          "elementType": "EVENT"
+        },
+        {
+          "id": "e5efcc48-1ae6-4144-bfa2-1a2d5f83970d",
+          "type": "INBOUND",
+          "elementType": "HTML_SCREEN"
+        }
+      ],
+      "modelContext": "Course Subscriptions",
+      "lane": "Interaction",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "triggers": [],
+      "tags": [],
+      "slice": "Register Course",
+      "description": "",
+      "context": "INTERNAL",
+      "elementContext": "INTERNAL",
+      "listElement": false,
+      "todoList": false,
+      "createsAggregate": false,
+      "elementCopy": false,
+      "sketched": false,
+      "comments": [
+        "What should happen if someone tries to register a course with zero or no seats at all?"
+      ]
+    }
+  ],
+  "events": [
+    {
+      "id": "fa61ded0-04f7-4e1e-bad8-b471bccd4519",
+      "title": "Course Registered",
+      "type": "EVENT",
+      "fields": [
+        {
+          "name": "capacity",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": false,
+          "idAttribute": false,
+          "type": "Number",
+          "cardinality": "Single",
+          "subfields": []
+        },
+        {
+          "name": "courseId",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": false,
+          "idAttribute": true,
+          "type": "String",
+          "cardinality": "Single",
+          "subfields": []
+        },
+        {
+          "name": "title",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": false,
+          "idAttribute": false,
+          "type": "String",
+          "cardinality": "Single",
+          "subfields": []
+        }
+      ],
+      "dependencies": [
+        {
+          "id": "238ec7a0-2d4b-43db-a341-96b0f6ff5f2a",
+          "type": "OUTBOUND",
+          "title": "Course Catalogue",
+          "elementType": "READMODEL"
+        },
+        {
+          "id": "2bf24483-ee27-434f-b4ab-6e46a9c50f2d",
+          "type": "INBOUND",
+          "title": "Register Course",
+          "elementType": "COMMAND"
+        }
+      ],
+      "modelContext": "Course Subscriptions",
+      "lane": "Course Subscriptions",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "triggers": [],
+      "tags": [],
+      "slice": "Register Course",
+      "description": "",
+      "context": "INTERNAL",
+      "elementContext": "INTERNAL",
+      "listElement": false,
+      "todoList": false,
+      "createsAggregate": false,
+      "elementCopy": false,
+      "sketched": false,
+      "comments": [
+        "Can a course be deleted / cancelled after registration? Kraken has no such command \u2014 is that intentional here as well?"
+      ]
+    }
+  ],
+  "readmodels": [],
+  "screens": [
+    {
+      "id": "e5efcc48-1ae6-4144-bfa2-1a2d5f83970d",
+      "title": "",
+      "type": "HTML_SCREEN",
+      "fields": [],
+      "dependencies": [
+        {
+          "id": "2bf24483-ee27-434f-b4ab-6e46a9c50f2d",
+          "type": "OUTBOUND",
+          "title": "Register Course",
+          "elementType": "COMMAND"
+        }
+      ],
+      "modelContext": "Course Subscriptions",
+      "lane": "Course Manager",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "triggers": [],
+      "tags": [],
+      "slice": "Register Course",
+      "description": "",
+      "context": "INTERNAL",
+      "elementContext": "INTERNAL",
+      "listElement": false,
+      "todoList": false,
+      "createsAggregate": false,
+      "elementCopy": false,
+      "sketched": false,
+      "comments": []
+    }
+  ],
+  "processors": [],
+  "tables": [],
+  "specifications": [
+    {
+      "id": "a1a11111-1111-4111-8111-111111111111",
+      "title": "Course registered \u2014 happy path",
+      "chapter": "Course Subscriptions",
+      "sliceName": "Register Course",
+      "vertical": false,
+      "expectEmptyList": false,
+      "examples": [],
+      "given": [],
+      "when": [
+        {
+          "id": "2bf24483-ee27-434f-b4ab-6e46a9c50f2d",
+          "title": "Register Course",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "COMMAND",
+          "fields": []
+        }
+      ],
+      "then": [
+        {
+          "id": "fa61ded0-04f7-4e1e-bad8-b471bccd4519",
+          "title": "Course Registered",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "a1a22222-2222-4222-8222-222222222222",
+      "title": "Course already registered",
+      "chapter": "Course Subscriptions",
+      "sliceName": "Register Course",
+      "vertical": false,
+      "expectEmptyList": false,
+      "examples": [],
+      "given": [
+        {
+          "id": "fa61ded0-04f7-4e1e-bad8-b471bccd4519",
+          "title": "Course Registered",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": []
+        }
+      ],
+      "when": [
+        {
+          "id": "2bf24483-ee27-434f-b4ab-6e46a9c50f2d",
+          "title": "Register Course",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "COMMAND",
+          "fields": []
+        }
+      ],
+      "then": [
+        {
+          "id": "84c7d435-2c6d-42e0-89f5-d31b7c48bac5",
+          "title": "Course already registered",
+          "description": "A course with this courseId already exists",
+          "type": "SPEC_ERROR",
+          "fields": []
+        }
+      ]
+    }
+  ],
+  "actors": [],
+  "aggregates": [],
+  "screenImages": [],
+  "comments": []
+}

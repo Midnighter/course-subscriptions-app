@@ -1,0 +1,58 @@
+# Codebase Patterns
+
+- Board-driven build: read `.build-kit/.slices/current_context.json` for the active
+  context, then `<context>/index.json` for slice statuses. Pick the highest-priority
+  "Planned" slice, mark it InProgress (locally and on the board), build it end-to-end,
+  then mark it Done. One slice per run.
+- Slice detail comes from the eventmodelers `slicedata` API
+  (`GET /api/org/:orgId/boards/:boardId/slicedata?contextId=<id>`), not the minimal
+  cached `slice.json` — re-fetch and persist the full object before trusting local files.
+- Never build manually: dispatch to `build-state-change`/`build-state-view`/
+  `build-automation` per the slice's `sliceType`.
+- `.build-kit/CLAUDE.md` "First-time project setup" must run once, before the first
+  build skill, in a brand-new project: resolve `pyproject.toml` TODOs, then create
+  `src/<pkg>/__init__.py`, `application.py`, `main.py`, `tests/integration/conftest.py`,
+  and fill README/mkdocs/docs TODO titles.
+- Read-model complexity guide: a "count of related entities" view (e.g. subscription
+  count) does not need a `found`/404 concept — expose the count as a derived property
+  (`len(self.items)`) over an always-defined zero state, matching specs that expect
+  200 + zero values for an entity with no prior events, not a 404.
+
+## 2026-08-12 — Student Course Subscriptions (STATE_VIEW)
+
+- Picked slice `423a429c-b5fd-4b19-b111-3505b38471d0` ("Student Course Subscriptions"),
+  the only "Planned" slice in context `course-subscriptions`. Marked InProgress in
+  `index.json` and via the board's `update-slice-status`.
+- `main` and `restart` are unrelated git histories (no merge-base); `main` holds a
+  stale "Done" implementation that contradicts the live board's "Planned" statuses.
+  Building on `restart` / `feature/studentcoursesubscriptions` instead of `main`.
+- Ran first-time project setup (see Codebase Patterns above) — this is the first
+  slice built in this project.
+- Invoked `build-state-view` skill, on-demand approach (no board comment requested
+  materialized). Consistency boundary tag: `student:{studentId}`.
+- Added `StudentRegistered`, `StudentSubscribed`, `StudentUnsubscribed` to
+  `src/course_subscriptions/course_subscriptions/events.py`.
+- Route: `GET /students/{student_id}/course-subscriptions`.
+- No lock files existed yet (first-time setup): ran the full
+  "Regenerating lock files" procedure (`rm -rf requirements*`, `hatch env prune`,
+  recreate every env) instead of trusting the partial set produced by ad hoc
+  `hatch -e dev`/`hatch -e integration-tests` runs, to keep them consistent.
+- Scoped checks green: style (ruff + pydoclint), types (pyrefly), acceptance +
+  integration tests for this slice only. `docs/openapi.json` regenerated —
+  contains exactly the one new path.
+- No `test-analyzer` skill is installed in this project's `.claude/skills/` —
+  skipped that step; nothing to invoke.
+- Pre-commit's `hatch-unit-tests`/`hatch-documentation-tests` hooks failed with
+  pytest exit 5 (no tests collected) since both suites were still empty from
+  scaffolding. Added one real test each rather than a bare placeholder:
+  `tests/unit/test_projection.py` covers `_tags()` (CLAUDE.md's own example of
+  non-trivial `Slice` logic worth a unit test), and
+  `tests/documentation/test_docs.py` runs `mktestdocs.check_md_file` over
+  every `docs/**/*.md` + `README.md` — using the `mktestdocs` dependency for
+  its stated purpose, so future doc code blocks are actually verified.
+- Set slice status to Done in `index.json`, `slice.json`, and via the board's
+  `update-slice-status` fallback curl. Committed as `feat: Student Course
+  Subscriptions` on `feature/studentcoursesubscriptions` and fast-forward
+  merged into `restart` (same lineage). `main` has an unrelated history and a
+  stale "Done" implementation contradicting the live board — left untouched;
+  flagged for a human to decide how to reconcile it (see AGENTS.md).

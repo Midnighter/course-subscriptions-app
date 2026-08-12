@@ -1,0 +1,390 @@
+{
+  "id": "423a429c-b5fd-4b19-b111-3505b38471d0",
+  "title": "Student Course Subscriptions",
+  "status": "Done",
+  "sliceType": "STATE_VIEW",
+  "chapter": "Course Subscriptions",
+  "context": "Course Subscriptions",
+  "commands": [],
+  "events": [],
+  "readmodels": [
+    {
+      "id": "6553e990-da3f-4882-8deb-8591a4c5de30",
+      "title": "Student Course Subscriptions",
+      "type": "READMODEL",
+      "fields": [
+        {
+          "name": "studentId",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": true,
+          "idAttribute": true,
+          "type": "String",
+          "cardinality": "Single",
+          "subfields": []
+        },
+        {
+          "name": "subscriptionCount",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": true,
+          "edited": false,
+          "idAttribute": false,
+          "type": "Int",
+          "cardinality": "Single",
+          "subfields": []
+        },
+        {
+          "name": "courseLimit",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": false,
+          "idAttribute": false,
+          "type": "Int",
+          "cardinality": "Single",
+          "subfields": []
+        },
+        {
+          "name": "courses",
+          "optional": false,
+          "showAttributes": false,
+          "technicalAttribute": false,
+          "query": false,
+          "generated": false,
+          "edited": false,
+          "idAttribute": true,
+          "type": "String",
+          "cardinality": "List",
+          "subfields": [],
+          "mapping": "courseId"
+        }
+      ],
+      "dependencies": [
+        {
+          "id": "87280fae-4195-46df-896b-d848a7cca71d",
+          "type": "INBOUND",
+          "title": "Student Unsubscribed",
+          "elementType": "EVENT"
+        },
+        {
+          "id": "82f616d3-e7f1-4180-942d-e6f40a7b021b",
+          "type": "INBOUND",
+          "title": "Student Subscribed",
+          "elementType": "EVENT"
+        },
+        {
+          "id": "c46bbeba-ea84-485a-985e-db44734e6add",
+          "type": "INBOUND",
+          "title": "Student Registered",
+          "elementType": "EVENT"
+        },
+        {
+          "id": "57d4d242-358e-4175-bc71-f85aad445af8",
+          "type": "OUTBOUND",
+          "elementType": "HTML_SCREEN"
+        },
+        {
+          "id": "7c495a9e-8566-427c-b91b-e670e8799292",
+          "type": "OUTBOUND",
+          "elementType": "HTML_SCREEN"
+        }
+      ],
+      "modelContext": "Course Subscriptions",
+      "lane": "Interaction",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "triggers": [],
+      "tags": [],
+      "slice": "Student Course Subscriptions",
+      "description": "",
+      "context": "INTERNAL",
+      "elementContext": "INTERNAL",
+      "listElement": false,
+      "todoList": false,
+      "createsAggregate": false,
+      "elementCopy": false,
+      "sketched": false,
+      "comments": []
+    }
+  ],
+  "screens": [
+    {
+      "id": "7c495a9e-8566-427c-b91b-e670e8799292",
+      "title": "",
+      "type": "HTML_SCREEN",
+      "fields": [],
+      "dependencies": [
+        {
+          "id": "6553e990-da3f-4882-8deb-8591a4c5de30",
+          "type": "INBOUND",
+          "title": "Student Course Subscriptions",
+          "elementType": "READMODEL"
+        },
+        {
+          "id": "bd20fbd8-e49e-4a88-8f01-e3eeb578406d",
+          "type": "INBOUND",
+          "title": "Course Catalogue",
+          "elementType": "READMODEL"
+        }
+      ],
+      "modelContext": "Course Subscriptions",
+      "lane": "Student",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "triggers": [],
+      "tags": [],
+      "slice": "Student Course Subscriptions",
+      "description": "",
+      "context": "INTERNAL",
+      "elementContext": "INTERNAL",
+      "listElement": false,
+      "todoList": false,
+      "createsAggregate": false,
+      "elementCopy": false,
+      "sketched": false,
+      "comments": []
+    }
+  ],
+  "processors": [],
+  "tables": [],
+  "specifications": [
+    {
+      "id": "7d8183d4-ad02-4fca-9164-91129508c765",
+      "title": "No course subscriptions",
+      "chapter": "Course Subscriptions",
+      "sliceName": "Student Course Subscriptions",
+      "vertical": false,
+      "expectEmptyList": false,
+      "examples": [],
+      "given": [],
+      "when": [],
+      "then": [
+        {
+          "id": "6553e990-da3f-4882-8deb-8591a4c5de30",
+          "title": "Student Course Subscriptions",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "READMODEL",
+          "fields": [
+            {
+              "name": "studentId",
+              "example": "STU-2026-0042"
+            },
+            {
+              "name": "subscriptionCount",
+              "example": "0"
+            }
+          ],
+          "expectEmptyList": false
+        }
+      ]
+    },
+    {
+      "id": "bfe2f399-9430-4116-aa4b-86f51c090d30",
+      "title": "One subscription",
+      "chapter": "Course Subscriptions",
+      "sliceName": "Student Course Subscriptions",
+      "vertical": false,
+      "expectEmptyList": false,
+      "examples": [],
+      "given": [
+        {
+          "id": "82f616d3-e7f1-4180-942d-e6f40a7b021b",
+          "title": "Student Subscribed",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": [
+            {
+              "name": "courseId",
+              "example": "EM-2024-001"
+            },
+            {
+              "name": "studentId",
+              "example": "STU-2026-0042"
+            }
+          ],
+          "expectEmptyList": false
+        }
+      ],
+      "when": [],
+      "then": [
+        {
+          "id": "6553e990-da3f-4882-8deb-8591a4c5de30",
+          "title": "Student Course Subscriptions",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "READMODEL",
+          "fields": [
+            {
+              "name": "studentId",
+              "example": "STU-2026-0042"
+            },
+            {
+              "name": "subscriptionCount",
+              "example": "1"
+            }
+          ],
+          "expectEmptyList": false
+        }
+      ]
+    },
+    {
+      "id": "29210023-0025-4a7e-bba2-47d88fd06079",
+      "title": "Two subscriptions",
+      "chapter": "Course Subscriptions",
+      "sliceName": "Student Course Subscriptions",
+      "vertical": false,
+      "expectEmptyList": false,
+      "examples": [],
+      "given": [
+        {
+          "id": "82f616d3-e7f1-4180-942d-e6f40a7b021b",
+          "title": "Student Subscribed",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": [
+            {
+              "name": "courseId",
+              "example": "EM-2024-001"
+            },
+            {
+              "name": "studentId",
+              "example": "STU-2026-0042"
+            }
+          ],
+          "expectEmptyList": false
+        },
+        {
+          "id": "82f616d3-e7f1-4180-942d-e6f40a7b021b",
+          "title": "Student Subscribed",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": [
+            {
+              "name": "courseId",
+              "example": "EX-2025-011"
+            },
+            {
+              "name": "studentId",
+              "example": "STU-2026-0042"
+            }
+          ],
+          "expectEmptyList": false
+        }
+      ],
+      "when": [],
+      "then": [
+        {
+          "id": "6553e990-da3f-4882-8deb-8591a4c5de30",
+          "title": "Student Course Subscriptions",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "READMODEL",
+          "fields": [
+            {
+              "name": "studentId",
+              "example": "STU-2026-0042"
+            },
+            {
+              "name": "subscriptionCount",
+              "example": "2"
+            }
+          ],
+          "expectEmptyList": false
+        }
+      ]
+    },
+    {
+      "id": "39f2d8d2-9dc6-4189-bf84-48cbc12052e9",
+      "title": "Unsubscribed",
+      "chapter": "Course Subscriptions",
+      "sliceName": "Student Course Subscriptions",
+      "vertical": false,
+      "expectEmptyList": false,
+      "examples": [],
+      "given": [
+        {
+          "id": "82f616d3-e7f1-4180-942d-e6f40a7b021b",
+          "title": "Student Subscribed",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": [
+            {
+              "name": "courseId",
+              "example": "EM-2024-001"
+            },
+            {
+              "name": "studentId",
+              "example": "STU-2026-0042"
+            }
+          ],
+          "expectEmptyList": false
+        },
+        {
+          "id": "87280fae-4195-46df-896b-d848a7cca71d",
+          "title": "Student Unsubscribed",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": [
+            {
+              "name": "courseId",
+              "example": "EM-2024-001"
+            },
+            {
+              "name": "studentId",
+              "example": "STU-2026-0042"
+            }
+          ],
+          "expectEmptyList": false
+        }
+      ],
+      "when": [],
+      "then": [
+        {
+          "id": "6553e990-da3f-4882-8deb-8591a4c5de30",
+          "title": "Student Course Subscriptions",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "READMODEL",
+          "fields": [
+            {
+              "name": "studentId",
+              "example": "STU-2026-0042"
+            },
+            {
+              "name": "subscriptionCount",
+              "example": "0"
+            }
+          ],
+          "expectEmptyList": false
+        }
+      ]
+    }
+  ],
+  "actors": [],
+  "aggregates": [],
+  "screenImages": [],
+  "comments": []
+}
