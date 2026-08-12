@@ -1573,11 +1573,11 @@
       "contextName": "Course Subscriptions",
       "contextSlug": "course-subscriptions",
       "folder": "coursecatalogue",
-      "status": "Planned",
+      "status": "Done",
       "definition": {
         "id": "d30964fa-e955-4edd-a3bb-25e956575b0d",
         "title": "Course Catalogue",
-        "status": "Planned",
+        "status": "Done",
         "sliceType": "STATE_VIEW",
         "chapter": "Course Subscriptions",
         "context": "Course Subscriptions",

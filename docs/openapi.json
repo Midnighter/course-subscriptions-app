@@ -45,6 +45,52 @@
         "title": "CommandResponse",
         "type": "object"
       },
+      "CourseCatalogueEntryResponse": {
+        "description": "Response body for a single course in the catalogue.",
+        "properties": {
+          "capacity": {
+            "title": "Capacity",
+            "type": "integer"
+          },
+          "course_id": {
+            "title": "Course Id",
+            "type": "string"
+          },
+          "number_of_subscriptions": {
+            "title": "Number Of Subscriptions",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "course_id",
+          "title",
+          "capacity",
+          "number_of_subscriptions"
+        ],
+        "title": "CourseCatalogueEntryResponse",
+        "type": "object"
+      },
+      "CourseCatalogueResponse": {
+        "description": "Response body for the Course Catalogue query.",
+        "properties": {
+          "courses": {
+            "items": {
+              "$ref": "#/components/schemas/CourseCatalogueEntryResponse"
+            },
+            "title": "Courses",
+            "type": "array"
+          }
+        },
+        "required": [
+          "courses"
+        ],
+        "title": "CourseCatalogueResponse",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -176,6 +222,28 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/course-catalogue": {
+      "get": {
+        "description": "Return every registered course with its capacity and subscription count.",
+        "operationId": "course_catalogue",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseCatalogueResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Course Catalogue",
+        "tags": [
+          "course_catalogue"
+        ]
+      }
+    },
     "/course-registrations": {
       "post": {
         "description": "Register a new course with a capacity limit on concurrent subscriptions.",

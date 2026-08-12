@@ -224,3 +224,79 @@
 - Slice complete: marked "Done" in `index.json` and `registercourse/slice.json`.
   Committed as `feat: Register Course` on `feature/registercourse` and
   fast-forward merged into `restart`.
+
+## 2026-08-12 - Course Catalogue (STATE_VIEW) - iteration start
+
+- Restored `.build-kit/.slices/course-subscriptions/` from the last commit: found
+  the same modified-in-working-tree corruption pattern noted in every prior
+  iteration (all slice.json/index.json truncated to bare stubs). `git checkout --`
+  fixed it.
+- Picked highest-priority Planned slice: "Course Catalogue" (index 4, id
+  `d30964fa-e955-4edd-a3bb-25e956575b0d`, STATE_VIEW).
+- **New bug found (not the usual corruption)**: two board slices share the folder
+  name `coursecatalogue` - this Planned one (`d30964fa...`) and a `Blocked`
+  duplicate (`fac33170...`, index 7, extensively documented in its own `comments`
+  as a leftover/incomplete duplicate). The on-disk `coursecatalogue/slice.json`
+  has held the *Blocked* slice's definition since the very first commit
+  (2e2764e) - a `load-slice` folder-collision bug, not working-tree corruption.
+  `index.json`'s inline `definition` for `d30964fa...` was correct/complete the
+  whole time. Fixed by overwriting `coursecatalogue/slice.json` with the correct
+  Planned definition from `index.json` (546 lines: 1 readmodel, 2 screens
+  (Student lane, Course Manager lane), 4 specifications).
+- Marked InProgress in `index.json` and `coursecatalogue/slice.json`. Board sync
+  via curl fallback (`node:changed`/`sliceStatus`) on node id
+  `d30964fa-e955-4edd-a3bb-25e956575b0d` succeeded directly - skipped the
+  title-based lookup in `update-slice-status`'s Step 2 since two slices share the
+  title "Course Catalogue" and a name match would be ambiguous; used the known
+  node id directly instead.
+- Branch: no pre-existing `feature/coursecatalogue` branch. Created fresh from
+  `restart`.
+- Read model: `courseId` (idAttribute), `title`, `capacity`, `numberOfSubscriptions`
+  (generated/derived), `listElement: true` -> a collection view across all
+  courses, not a single-entity lookup. Inbound: `CourseRegistered`,
+  `CourseCapacityChanged`, `StudentSubscribed`, `StudentUnsubscribed` (all four
+  already exist in `events.py` from earlier slices). Outbound: two HTML screens
+  (Student lane, Course Manager lane) - both consume the same read model, no
+  extra fields needed per screen.
+- 4 specifications: courses shown with title/capacity; empty catalogue (200 +
+  empty list, not 404 - matches the read-model complexity guide); capacity
+  changes reflected; subscription count derived from Subscribed minus
+  Unsubscribed across multiple students.
+- Dispatching to `build-state-view` skill next.
+- Route: `GET /course-catalogue` (collection view, root path, no query params -
+  matches all 4 specs). Global consistency boundary `Selector(types=[...4
+  events...], tags=[])`, justified in the projection docstring - the catalogue
+  spans every registered course, so there is no single entity tag to scope to.
+  Confirmed via `eventsourcing.dcb.gwt.selector_matches`/`api.py` docstrings that
+  `tags=[]` is vacuously satisfied by every event (`not selector.tags or
+  set(selector.tags).issubset(event.tags)`), not "matches nothing" - safe for
+  both GWT and the real recorder.
+- Multi-entity read model per the `build-state-view` complexity guide's rare
+  case: `self.courses: dict[str, CourseCatalogueEntry] = {}` where
+  `CourseCatalogueEntry` (a small `@dataclass`) holds `title`, `capacity`, and a
+  `subscribers: set[str]` (add on `StudentSubscribed`, discard on
+  `StudentUnsubscribed`); `number_of_subscriptions` in the response is
+  `len(entry.subscribers)` - a derived property, not stored state.
+  `CourseCapacityChanged` updates `entry.capacity` in place.
+- Files added: `course_catalogue/{__init__.py,projection.py,routes.py}`,
+  `tests/acceptance/course_subscriptions/course_catalogue/test_course_catalogue.py`
+  (4 tests: empty catalogue, title/capacity, capacity change, subscription
+  count net of unsubscribe), `tests/integration/course_subscriptions/test_course_catalogue.py`
+  (5 tests, incl. multi-course isolation - two independently-registered courses
+  each keep their own entry). Wired `course_catalogue_routes.router` into
+  `main.py`. Regenerated `docs/openapi.json` (purely additive: one new path
+  `/course-catalogue` + two new schemas).
+- No test-analyzer skill installed in this project (same as every prior
+  iteration) - skipped that step.
+- Scoped checks green: style (ruff + pydoclint), types (pyrefly, 0 errors),
+  acceptance (18 total, 4 new)/integration (21 total, 5 new)/unit (1)/
+  documentation (2) suites all passing. No dependency changes, so no lock-file
+  regeneration needed.
+- Board sync via curl fallback succeeded for both InProgress and Done
+  transitions, using the known node id directly rather than the
+  `update-slice-status` skill's title-based lookup (ambiguous: two board slices
+  share the title "Course Catalogue" - see the folder-collision bug noted
+  above).
+- Slice complete: marked "Done" in `index.json` and `coursecatalogue/slice.json`.
+  Committing as `feat: Course Catalogue` on `feature/coursecatalogue` and
+  fast-forward merging into `restart`.

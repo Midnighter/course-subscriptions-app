@@ -12,6 +12,9 @@ from course_subscriptions.application import CourseSubscriptionsApp
 from course_subscriptions.course_subscriptions.change_course_capacity import (
     routes as change_course_capacity_routes,
 )
+from course_subscriptions.course_subscriptions.course_catalogue import (
+    routes as course_catalogue_routes,
+)
 from course_subscriptions.course_subscriptions.register_course import (
     routes as register_course_routes,
 )
@@ -40,4 +43,5 @@ def create_app() -> FastAPI:
     app.include_router(unsubscribe_student_routes.router)
     app.include_router(change_course_capacity_routes.router)
     app.include_router(register_course_routes.router)
+    app.include_router(course_catalogue_routes.router)
     return app

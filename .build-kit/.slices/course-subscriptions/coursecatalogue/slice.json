@@ -1,7 +1,7 @@
 {
-  "id": "fac33170-de70-4647-a599-a921c44a01e2",
+  "id": "d30964fa-e955-4edd-a3bb-25e956575b0d",
   "title": "Course Catalogue",
-  "status": "Blocked",
+  "status": "Done",
   "sliceType": "STATE_VIEW",
   "chapter": "Course Subscriptions",
   "context": "Course Subscriptions",
@@ -9,7 +9,7 @@
   "events": [],
   "readmodels": [
     {
-      "id": "bd20fbd8-e49e-4a88-8f01-e3eeb578406d",
+      "id": "238ec7a0-2d4b-43db-a341-96b0f6ff5f2a",
       "title": "Course Catalogue",
       "type": "READMODEL",
       "fields": [
@@ -68,9 +68,15 @@
       ],
       "dependencies": [
         {
-          "id": "82f616d3-e7f1-4180-942d-e6f40a7b021b",
+          "id": "87280fae-4195-46df-896b-d848a7cca71d",
           "type": "INBOUND",
-          "title": "Student Subscribed",
+          "title": "Student Unsubscribed",
+          "elementType": "EVENT"
+        },
+        {
+          "id": "fa61ded0-04f7-4e1e-bad8-b471bccd4519",
+          "type": "INBOUND",
+          "title": "Course Registered",
           "elementType": "EVENT"
         },
         {
@@ -80,7 +86,23 @@
           "elementType": "EVENT"
         },
         {
-          "id": "7c495a9e-8566-427c-b91b-e670e8799292",
+          "id": "82f616d3-e7f1-4180-942d-e6f40a7b021b",
+          "type": "INBOUND",
+          "title": "Student Subscribed",
+          "elementType": "EVENT"
+        },
+        {
+          "id": "eefd7fca-8a1b-41b6-9ef7-985f1a3c9e3a",
+          "type": "OUTBOUND",
+          "elementType": "HTML_SCREEN"
+        },
+        {
+          "id": "4c217e8b-6e57-4491-abcc-b5e08f4e93c5",
+          "type": "OUTBOUND",
+          "elementType": "HTML_SCREEN"
+        },
+        {
+          "id": "84fe4cb8-269b-482c-9b38-df849599e959",
           "type": "OUTBOUND",
           "elementType": "HTML_SCREEN"
         }
@@ -101,15 +123,422 @@
       "elementCopy": false,
       "sketched": false,
       "comments": [
-        "After 10 consecutive Ralph iterations flagged this as unresolved, determination: this is a leftover/incomplete duplicate of column D's \"Course Catalogue\" slice (d30964fa-e955-4edd-a3bb-25e956575b0d), not an intentional second consumer. Evidence: identical readmodel title/fields, but this node's inbound dependencies (Student Subscribed, Course Capacity Changed) are a strict subset of column D's (which also has Course Registered, Student Unsubscribed) \u2014 consistent with an earlier/partial version of the same model that was superseded when column D was completed. No specifications, commands, or screen were ever attached here. Building a second `/course-catalogue` route would collide with the one already implemented from column D.\n\nSetting slice status to \"Blocked\" (rather than leaving it \"Planned\" forever) so the build loop stops re-picking an unbuildable stub. Recommended next step for a human modeler: delete this column/slice from the board, or explicitly wire up a distinct screen/actor if it truly is meant to be a second consumer.",
-        "This \"Course Catalogue\" read model (column G) duplicates the one in column D (both titled \"Course Catalogue\", and this one links back to the same node via data.linkedTo) but has no screen/actor connected here. Is this an intentional second consumer of the read model, or a leftover/incomplete duplicate that should be removed or merged into column D's slice?"
+        "[QUESTION] Do courses run for a set time period, or are they open for registration indefinitely?"
       ]
     }
   ],
-  "screens": [],
+  "screens": [
+    {
+      "id": "4c217e8b-6e57-4491-abcc-b5e08f4e93c5",
+      "title": "",
+      "type": "HTML_SCREEN",
+      "fields": [],
+      "dependencies": [
+        {
+          "id": "238ec7a0-2d4b-43db-a341-96b0f6ff5f2a",
+          "type": "INBOUND",
+          "title": "Course Catalogue",
+          "elementType": "READMODEL"
+        }
+      ],
+      "modelContext": "Course Subscriptions",
+      "lane": "Student",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "triggers": [],
+      "tags": [],
+      "slice": "Course Catalogue",
+      "description": "",
+      "context": "INTERNAL",
+      "elementContext": "INTERNAL",
+      "listElement": false,
+      "todoList": false,
+      "createsAggregate": false,
+      "elementCopy": false,
+      "sketched": false,
+      "comments": []
+    },
+    {
+      "id": "84fe4cb8-269b-482c-9b38-df849599e959",
+      "title": "",
+      "type": "HTML_SCREEN",
+      "fields": [],
+      "dependencies": [
+        {
+          "id": "238ec7a0-2d4b-43db-a341-96b0f6ff5f2a",
+          "type": "INBOUND",
+          "title": "Course Catalogue",
+          "elementType": "READMODEL"
+        }
+      ],
+      "modelContext": "Course Subscriptions",
+      "lane": "Course Manager",
+      "aggregate": "default",
+      "aggregateDependencies": [],
+      "triggers": [],
+      "tags": [],
+      "slice": "Course Catalogue",
+      "description": "",
+      "context": "INTERNAL",
+      "elementContext": "INTERNAL",
+      "listElement": false,
+      "todoList": false,
+      "createsAggregate": false,
+      "elementCopy": false,
+      "sketched": false,
+      "comments": [
+        "[QUESTION] Can a course manager see the list of students enrolled in a course, not just how many?"
+      ]
+    }
+  ],
   "processors": [],
   "tables": [],
-  "specifications": [],
+  "specifications": [
+    {
+      "id": "02f927b9-f4fc-4415-aceb-90a7f50004d5",
+      "title": "Courses are shown with their title and capacity.",
+      "chapter": "Course Subscriptions",
+      "sliceName": "Course Catalogue",
+      "vertical": false,
+      "expectEmptyList": false,
+      "examples": [
+        {
+          "title": "Intro to Event Modeling",
+          "capacity": 10,
+          "courseId": "EM-2024-001",
+          "numberOfSubscriptions": 0
+        }
+      ],
+      "given": [
+        {
+          "id": "fa61ded0-04f7-4e1e-bad8-b471bccd4519",
+          "title": "Course Registered",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": [
+            {
+              "name": "capacity",
+              "example": 10
+            },
+            {
+              "name": "courseId",
+              "example": "EM-2024-001"
+            },
+            {
+              "name": "title",
+              "example": "Intro to Event Modeling"
+            }
+          ],
+          "expectEmptyList": false
+        }
+      ],
+      "when": [],
+      "then": [
+        {
+          "id": "238ec7a0-2d4b-43db-a341-96b0f6ff5f2a",
+          "title": "Course Catalogue",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "READMODEL",
+          "fields": [
+            {
+              "name": "capacity",
+              "example": "10"
+            },
+            {
+              "name": "courseId",
+              "example": "c-1"
+            },
+            {
+              "name": "title",
+              "example": "Intro to Event Modeling"
+            },
+            {
+              "name": "numberOfSubscriptions",
+              "example": "3"
+            }
+          ],
+          "expectEmptyList": false
+        }
+      ]
+    },
+    {
+      "id": "7a3e4b91-10bf-45d1-bd50-50763749947d",
+      "title": "Empty catalogue",
+      "chapter": "Course Subscriptions",
+      "sliceName": "Course Catalogue",
+      "vertical": false,
+      "expectEmptyList": true,
+      "examples": [],
+      "given": [],
+      "when": [],
+      "then": [
+        {
+          "id": "238ec7a0-2d4b-43db-a341-96b0f6ff5f2a",
+          "title": "Course Catalogue",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "READMODEL",
+          "fields": [
+            {
+              "name": "capacity",
+              "example": "10"
+            },
+            {
+              "name": "courseId",
+              "example": "c-1"
+            },
+            {
+              "name": "title",
+              "example": "Intro to Event Modeling"
+            }
+          ],
+          "expectEmptyList": true
+        }
+      ]
+    },
+    {
+      "id": "0407f3a6-bdf1-435c-b10e-11a347610b43",
+      "title": "Account for changes in capacity",
+      "chapter": "Course Subscriptions",
+      "sliceName": "Course Catalogue",
+      "vertical": false,
+      "expectEmptyList": false,
+      "examples": [
+        {
+          "title": "Intro to Event Modeling",
+          "capacity": "2",
+          "courseId": "EM-2024-001",
+          "numberOfSubscriptions": 0
+        }
+      ],
+      "given": [
+        {
+          "id": "fa61ded0-04f7-4e1e-bad8-b471bccd4519",
+          "title": "Course Registered",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": [
+            {
+              "name": "capacity",
+              "example": "10"
+            },
+            {
+              "name": "courseId",
+              "example": "EM-2024-001"
+            },
+            {
+              "name": "title",
+              "example": "Intro to Event Modeling"
+            }
+          ],
+          "expectEmptyList": false
+        },
+        {
+          "id": "3f17cdee-7718-4f8a-82cc-d0a1e12c2a1f",
+          "title": "Course Capacity Changed",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": [
+            {
+              "name": "capacity",
+              "example": "2"
+            },
+            {
+              "name": "courseId",
+              "example": "EM-2024-001"
+            }
+          ],
+          "expectEmptyList": false
+        }
+      ],
+      "when": [],
+      "then": [
+        {
+          "id": "238ec7a0-2d4b-43db-a341-96b0f6ff5f2a",
+          "title": "Course Catalogue",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "READMODEL",
+          "fields": [
+            {
+              "name": "capacity",
+              "example": "10"
+            },
+            {
+              "name": "courseId",
+              "example": "c-1"
+            },
+            {
+              "name": "title",
+              "example": "Intro to Event Modeling"
+            },
+            {
+              "name": "numberOfSubscriptions",
+              "example": "3"
+            }
+          ],
+          "expectEmptyList": false
+        }
+      ]
+    },
+    {
+      "id": "b9091a29-58ac-4831-abb5-4d69e518fccf",
+      "title": "Subscriptions are counted",
+      "chapter": "Course Subscriptions",
+      "sliceName": "Course Catalogue",
+      "vertical": false,
+      "expectEmptyList": false,
+      "examples": [
+        {
+          "title": "Intro to Event Modeling",
+          "capacity": "5",
+          "courseId": "EM-2024-001",
+          "numberOfSubscriptions": "2"
+        }
+      ],
+      "given": [
+        {
+          "id": "fa61ded0-04f7-4e1e-bad8-b471bccd4519",
+          "title": "Course Registered",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": [
+            {
+              "name": "capacity",
+              "example": "5"
+            },
+            {
+              "name": "courseId",
+              "example": "EM-2024-001"
+            },
+            {
+              "name": "title",
+              "example": "Intro to Event Modeling"
+            }
+          ],
+          "expectEmptyList": false
+        },
+        {
+          "id": "82f616d3-e7f1-4180-942d-e6f40a7b021b",
+          "title": "Student Subscribed",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": [
+            {
+              "name": "courseId",
+              "example": "EM-2024-001"
+            },
+            {
+              "name": "studentId",
+              "example": "STU-2026-0042"
+            }
+          ],
+          "expectEmptyList": false
+        },
+        {
+          "id": "87280fae-4195-46df-896b-d848a7cca71d",
+          "title": "Student Unsubscribed",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": [
+            {
+              "name": "courseId",
+              "example": "EM-2024-001"
+            },
+            {
+              "name": "studentId",
+              "example": "STU-2026-0042"
+            }
+          ],
+          "expectEmptyList": false
+        },
+        {
+          "id": "82f616d3-e7f1-4180-942d-e6f40a7b021b",
+          "title": "Student Subscribed",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": [
+            {
+              "name": "courseId",
+              "example": "EM-2024-001"
+            },
+            {
+              "name": "studentId",
+              "example": "STU-2026-0043"
+            }
+          ],
+          "expectEmptyList": false
+        },
+        {
+          "id": "82f616d3-e7f1-4180-942d-e6f40a7b021b",
+          "title": "Student Subscribed",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "EVENT",
+          "fields": [
+            {
+              "name": "courseId",
+              "example": "EM-2024-001"
+            },
+            {
+              "name": "studentId",
+              "example": "STU-2026-0044"
+            }
+          ],
+          "expectEmptyList": false
+        }
+      ],
+      "when": [],
+      "then": [
+        {
+          "id": "238ec7a0-2d4b-43db-a341-96b0f6ff5f2a",
+          "title": "Course Catalogue",
+          "tags": [],
+          "index": 0,
+          "specRow": 0,
+          "type": "READMODEL",
+          "fields": [
+            {
+              "name": "capacity",
+              "example": "10"
+            },
+            {
+              "name": "courseId",
+              "example": "EM-2024-001"
+            },
+            {
+              "name": "title",
+              "example": "Intro to Event Modeling"
+            },
+            {
+              "name": "numberOfSubscriptions",
+              "example": "3"
+            }
+          ],
+          "expectEmptyList": false
+        }
+      ]
+    }
+  ],
   "actors": [],
   "aggregates": [],
   "screenImages": [],

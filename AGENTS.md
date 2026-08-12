@@ -61,3 +61,28 @@ detail belongs in `progress.txt`, not here.
   Reach for `Sequence[Selector]` only when the invariant genuinely spans two
   *independent* entities (see the two-entity boundary note above), not
   whenever a second tag merely happens to be present on some events.
+- **`Selector(tags=[])` means "every event of these types, everywhere", not
+  "matches nothing".** Both `eventsourcing.dcb.gwt.selector_matches` and the
+  real recorder's tag rule are "all the item tags are in the event tags" —
+  vacuously true for an empty list. This is the right (and only) boundary for a
+  genuinely global, multi-entity read model (e.g. a catalogue listing every
+  entity of a kind) — model it as `self.entries: dict[str, EntryState] = {}`
+  keyed by entity id, and justify `tags=[]` in the projection's docstring per
+  `.build-kit/CLAUDE.md`'s own note on this case. Don't confuse this with the
+  *write*-side warning in `CLAUDE.md` about an empty selector as an *append
+  condition* (which does mean "fail if anything exists") — that's a different
+  operation (`append`'s optimistic-concurrency check) from a *read*-side
+  `consistency_boundary()` filter.
+- **A slice folder can collide when two board slices share the same title.**
+  `load-slice` derives the on-disk folder name from the slice title, so two
+  board slices both titled e.g. "Course Catalogue" (one live, one a stale
+  Blocked/duplicate column) land in the *same* folder — and whichever was
+  written last wins in `<folder>/slice.json`, silently holding the wrong
+  slice's full definition even though `index.json`'s per-slice inline
+  `definition` stays correct for both. This is a different failure mode from
+  the now-familiar "slice.json truncated to a bare stub" corruption — it's a
+  content *mismatch* (right shape, wrong slice id), so `git checkout --` won't
+  fix it; check `<folder>/slice.json`'s own `"id"` field against the specific
+  slice id you picked from `index.json` before trusting it, and if they
+  disagree, rewrite the file from `index.json`'s inline `definition` for the
+  id you actually picked.
