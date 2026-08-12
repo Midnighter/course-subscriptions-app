@@ -96,3 +96,26 @@ detail belongs in `progress.txt`, not here.
   `elif` silently drops whichever condition comes second; each tag-derived
   condition needs its own `if` so the handler can increment/decrement more
   than one counter from the same event.
+- **An AUTOMATION's inbound readmodel dependency doesn't have to exist in
+  code before the automation does**, when that readmodel's only consumer is
+  the automation itself. Subscribing the `Projection` directly to the
+  upstream domain event the readmodel would have projected is functionally
+  equivalent, and avoids pulling a whole separate, lower-priority slice into
+  scope just to satisfy a dependency edge on the board.
+- **The first runner-based `Projection` in a project needs two one-time
+  additions, not per-slice ones**: the shared `src/<pkg>/projection.py`
+  module (`SharedAppProjectionRunner` overriding `BaseProjectionRunner.__exit__`
+  to skip closing the shared app; `ProjectionSupervisor` as a watchdog thread
+  restarting dead runners via a factory, counting restarts by tracking
+  position so transient faults don't accumulate toward `max_restarts`), and
+  rewiring `main.py`'s lifespan from a bare `with {ProjectionsApp}()` to
+  `AsyncExitStack` (app entered first/closed last, supervisor entered
+  after/exited first). Every subsequent automation only adds its own
+  `register_student`-style module plus one `supervisor.register(...)` call in
+  the lifespan — it does not touch `projection.py` again.
+- **`Decision` (or any type used as a live generic parameter, e.g.
+  `Projection[View, TaggedEvent[Decision]]`) must be a real top-level import,
+  not one hidden under `TYPE_CHECKING`** — even with `from __future__ import
+  annotations` active for ordinary annotations, a class body's base-class
+  expression is evaluated at import time, not deferred, and raises
+  `NameError` if the name only exists for type checkers.

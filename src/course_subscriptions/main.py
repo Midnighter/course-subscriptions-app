@@ -3,7 +3,8 @@
 
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
+from functools import partial
 from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
@@ -18,6 +19,12 @@ from course_subscriptions.course_subscriptions.course_catalogue import (
 from course_subscriptions.course_subscriptions.register_course import (
     routes as register_course_routes,
 )
+from course_subscriptions.course_subscriptions.register_student.projection import (
+    create_runner as create_register_student_runner,
+)
+from course_subscriptions.course_subscriptions.register_student.projection import (
+    create_view as create_register_student_view,
+)
 from course_subscriptions.course_subscriptions.student_course_subscriptions import (
     routes as student_course_subscriptions_routes,
 )
@@ -27,6 +34,7 @@ from course_subscriptions.course_subscriptions.subscribe_student import (
 from course_subscriptions.course_subscriptions.unsubscribe_student import (
     routes as unsubscribe_student_routes,
 )
+from course_subscriptions.projection import ProjectionSupervisor
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -34,9 +42,24 @@ if TYPE_CHECKING:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[dict]:
-    """Construct the process-wide application for the lifetime of the app."""
-    with CourseSubscriptionsApp() as dcb_app:
-        yield {"dcb_app": dcb_app}
+    """Construct the process-wide application and its projections."""
+    async with AsyncExitStack() as stack:
+        dcb_app = stack.enter_context(CourseSubscriptionsApp())  # entered FIRST
+        supervisor = ProjectionSupervisor(context_name=dcb_app.context_name)
+
+        register_student_view = create_register_student_view()
+        supervisor.register(
+            "register_student",
+            register_student_view,
+            partial(create_register_student_runner, dcb_app, register_student_view),
+        )
+
+        stack.enter_context(supervisor)  # exits BEFORE the app
+        yield {
+            "dcb_app": dcb_app,
+            "register_student_view": register_student_view,
+            "projection_supervisor": supervisor,
+        }
 
 
 def create_app() -> FastAPI:

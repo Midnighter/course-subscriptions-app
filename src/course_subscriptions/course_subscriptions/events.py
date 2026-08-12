@@ -20,6 +20,22 @@ class StudentRegistered(Decision):
     course_limit: int
 
 
+class ExternalStudentRegistered(Decision):
+    """
+    A student was registered with the external registrar system.
+
+    This is the trigger for the "Register Student" automation. It is a
+    distinct event type from `StudentRegistered` (a different id on the
+    board, under `EXTERNAL` context) even though both currently carry the
+    same fields — one names an external fact, the other this context's own
+    outcome.
+    """
+
+    student_id: str
+    name: str
+    course_limit: int
+
+
 class StudentSubscribed(Decision):
     """A student subscribed to a course."""
 

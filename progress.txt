@@ -362,3 +362,64 @@
 - Slice complete: marked "Done" in `index.json` and
   `subscribestudent/slice.json`. Committing as `feat: Subscribe Student` on
   `feature/subscribestudent` and fast-forward merging into `restart`.
+
+## 2026-08-12 - Register Student (AUTOMATION) - iteration start
+
+- Picked the only "Planned" slice: "Register Student" (id
+  `4d3728b0-0af0-45d4-889b-c6c43fd1b3c1`, index 6, AUTOMATION). Marked
+  InProgress in `index.json`, `registerstudent/slice.json`, and via the board.
+- The processor's INBOUND dependency is a READMODEL ("Student to Register",
+  id `90b30461-f799-45ca-8963-31334ca1444b`) owned by the not-yet-built
+  `studenttoregister` slice (status "Created" — out of scope this iteration).
+  Resolved the trigger ambiguity by adding a new `ExternalStudentRegistered`
+  `Decision` directly to `events.py` as a stand-in for that readmodel: its
+  only consumer is this exact automation, so subscribing straight to the
+  external domain event the readmodel would have projected is functionally
+  equivalent without building the out-of-scope slice. Kept the pre-existing
+  `StudentRegistered` (INTERNAL context, different board id) as the emitted
+  event — the two "Student Registered" events on the board are genuinely
+  distinct types despite sharing field shape.
+- This is the **first runner-based `Projection` automation** in the project —
+  every prior `projection.py` (`course_catalogue`, `student_course_subscriptions`)
+  is an on-demand `Slice`-based view, not a `Projection`/runner. Required
+  creating the shared `src/course_subscriptions/projection.py` module for the
+  first time: `SharedAppProjectionRunner` (overrides
+  `BaseProjectionRunner.__exit__` to skip its unconditional `self.app.close()`,
+  since the app is shared with the routes) and `ProjectionSupervisor` (a
+  watchdog thread that restarts dead runners via a registered factory,
+  counting restarts by tracking position rather than raw count so unrelated
+  transient faults don't accumulate toward `max_restarts`).
+- Built `register_student/projection.py`: `RegisterStudentView`
+  (abstract ledger) / `POPORegisterStudentView` (POPO-backed impl) tracking
+  outstanding registrations; `RegisterStudentProjection` subscribes to both
+  `ExternalStudentRegistered` (fires the command, records an entry) and
+  `StudentRegistered` (drains the entry); `drain()` re-fires entries orphaned
+  by a crash, capped at `MAX_ATTEMPTS`. `_fire` swallows command exceptions
+  (logged) so one failure can't kill the runner's processing thread — the
+  lingering ledger entry is the signal, per `.build-kit/CLAUDE.md`'s
+  "never wrap `process_event` in a blanket try/except" rule (the guard is
+  scoped to the command port, not the whole dispatch).
+- Rewired `main.py`'s lifespan from a bare `with CourseSubscriptionsApp()` to
+  `AsyncExitStack` + `ProjectionSupervisor`: app entered first (closes last),
+  supervisor entered after (exits before the app). This is the project's
+  first slice needing this upgrade — every earlier slice only added a router.
+- Tests: acceptance tests call `process_event`/`drain()` directly (10 tests,
+  including a failing-command-doesn't-propagate case and two `drain()`
+  attempt-limit cases); integration tests seed via `dcb_app.events.append`
+  and wait on the view, including one test that seeds an orphaned ledger
+  entry before constructing the runner to prove crash recovery (3 tests).
+- Fixed a `NameError` at import time from putting `Decision` under
+  `TYPE_CHECKING` while using it as a runtime generic parameter on
+  `Projection[RegisterStudentView, TaggedEvent[Decision]]` — moved it to a
+  plain module-level import.
+- Scoped checks green: style (ruff + pydoclint, clean after `--fix`), types
+  (pyrefly, 0 errors), acceptance (43 total, 10 new) / integration (33 total,
+  3 new) / unit (1) suites all passing. No new HTTP routes, so
+  `docs/openapi.json` regeneration was a no-op diff (confirmed via `git
+  status`/`git diff --stat`). No dependency changes, so no lock-file
+  regeneration needed.
+- Board sync via curl fallback succeeded for both InProgress and Done
+  transitions on node id `4d3728b0-0af0-45d4-889b-c6c43fd1b3c1`.
+- Slice complete: marked "Done" in `index.json` and
+  `registerstudent/slice.json`. Committing as `feat: Register Student` on
+  `feature/registerstudent` and fast-forward merging into `restart`.
