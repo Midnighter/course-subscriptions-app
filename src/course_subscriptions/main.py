@@ -12,6 +12,9 @@ from course_subscriptions.application import CourseSubscriptionsApp
 from course_subscriptions.course_subscriptions.student_course_subscriptions import (
     routes as student_course_subscriptions_routes,
 )
+from course_subscriptions.course_subscriptions.unsubscribe_student import (
+    routes as unsubscribe_student_routes,
+)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -28,4 +31,5 @@ def create_app() -> FastAPI:
     """Build the FastAPI application, wiring in every slice's router."""
     app = FastAPI(lifespan=lifespan)
     app.include_router(student_course_subscriptions_routes.router)
+    app.include_router(unsubscribe_student_routes.router)
     return app

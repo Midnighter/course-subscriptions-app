@@ -32,3 +32,22 @@ detail belongs in `progress.txt`, not here.
   entity is always well-defined at zero (no prior events → count 0), so it
   should return 200, not 404 — check the specifications' `given: []` scenarios
   before defaulting to the presence-check template.
+- **DCB "given" events for a spec only need to exist as `Decision` classes**,
+  not as fully-built commands from other slices — GWT/integration seeding uses
+  raw `TaggedEvent`s constructed directly, bypassing whatever slice would
+  normally emit them. A slice whose specs reference not-yet-built upstream
+  commands is not actually blocked by them.
+- **A two-entity consistency boundary needs a `Sequence[Selector]`, not one
+  `Selector` with both tags**, whenever one invariant only depends on one of
+  the two entities (e.g. "does the course exist" vs. "is this student
+  subscribed to it"). A single dual-tag selector would only ever see events
+  tagged with *both*, silently missing single-entity events like the other
+  entity's creation. The emitted event still carries every tag from every
+  selector, so each one independently sees it.
+- **GWT's `given().when()` rejects any given event outside the slice's own
+  consistency boundary** (`AssertionError: Consistency boundary wouldn't have
+  selected: ...`) — this includes a spec scenario that arranges a *different*
+  entity's history to prove isolation (e.g. another student's subscription to
+  the same course). That case has to move to the integration suite, seeded via
+  `app.events.append`; write the acceptance test for the same invariant using
+  only boundary-compliant history instead.

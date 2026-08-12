@@ -4,6 +4,14 @@
 from eventsourcing.pydantic import Decision
 
 
+class CourseRegistered(Decision):
+    """A course was registered with a capacity limit on concurrent subscriptions."""
+
+    course_id: str
+    title: str
+    capacity: int
+
+
 class StudentRegistered(Decision):
     """A student registered with a limit on concurrent course subscriptions."""
 

@@ -1,7 +1,7 @@
 {
   "id": "b6574a3c-7e60-4de8-b46d-d757f0ba4712",
   "title": "Unsubscribe Student",
-  "status": "Planned",
+  "status": "Done",
   "sliceType": "STATE_CHANGE",
   "chapter": "Course Subscriptions",
   "context": "Course Subscriptions",

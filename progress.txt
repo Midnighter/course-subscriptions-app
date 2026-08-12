@@ -56,3 +56,70 @@
   merged into `restart` (same lineage). `main` has an unrelated history and a
   stale "Done" implementation contradicting the live board — left untouched;
   flagged for a human to decide how to reconcile it (see AGENTS.md).
+
+## 2026-08-12 — Unsubscribe Student (STATE_CHANGE)
+
+- Picked slice `b6574a3c-7e60-4de8-b46d-d757f0ba4712` ("Unsubscribe Student"), the
+  highest-priority "Planned" slice (index 0) in context `course-subscriptions`.
+  Marked InProgress in `index.json`, `slice.json`, and via the board.
+- Found `.build-kit/.slices/course-subscriptions/*/slice.json` and `index.json`
+  truncated to bare `{id, title, status}` stubs in the working tree at session
+  start, even for the already-`Done` "Student Course Subscriptions" slice whose
+  own commit holds full detail — this was accidental corruption from an earlier
+  session, not an intended format. Restored via `git checkout --` against the
+  last commit before proceeding.
+- Created branch `feature/unsubscribestudent` from `restart` (the branch holding
+  live, board-aligned lineage — `main` and the old `feature/subscribestudent`/
+  `feature/changecoursecapacity` branches are unrelated pre-restart histories;
+  ignoring them per the established pattern, see AGENTS.md).
+- Fetched full slice data via `get_slice_data` (contextId required alongside
+  sliceId — `sliceId` alone errors). Command `Unsubscribe Student` (courseId,
+  studentId, both idAttribute) -> event `Student Unsubscribed`. Specs need
+  `Course Registered`, `Student Registered`, `Student Subscribed` as given
+  events — per `.build-kit/CLAUDE.md`'s DCB testing notes, these only need to
+  exist as `Decision` classes to seed via `app.events.append`, not as built
+  commands, so this doesn't actually depend on Register Course/Register
+  Student/Subscribe Student being implemented first.
+- `StudentUnsubscribed`, `StudentRegistered`, `StudentSubscribed` events already
+  exist in `events.py` (added for the earlier read-model slice). `CourseRegistered`
+  does not exist yet — needs adding for the "given" clauses.
+- Designed a dual-`Selector` consistency boundary: one single-tag selector on
+  `course:{course_id}` for `CourseRegistered` (proves the course exists), one
+  dual-tag selector on `[course:{course_id}, student:{student_id}]` for
+  `StudentSubscribed`/`StudentUnsubscribed` (proves the current subscription
+  state). The emitted `StudentUnsubscribed` carries both tags, satisfying
+  Selector tags ⊆ trigger tags for both selectors at once.
+- Created `src/course_subscriptions/command.py` (first command slice in the
+  project) with `CommandOutcome`, `CommandSlice`, `CommandResponse`, and added
+  the one documented `do()` override on `application.py` per
+  `.build-kit/CLAUDE.md`'s *Command outcomes* section.
+- Two-entity route address: per CLAUDE.md's "nest under the entity the command
+  mutates; the other stays in the body" rule, chose `POST
+  /students/{student_id}/unsubscriptions` with `course_id` in the body — student
+  because the existing "Student Course Subscriptions" read model and this
+  slice's own screen (lane "Student", inbound from that read model) both frame
+  this as the student managing their own subscription list. Verified no
+  collision with the one existing route (`GET
+  /students/{student_id}/course-subscriptions`) via `hatch run docs:openapi`
+  and grepping `docs/openapi.json`.
+- The slice.json "Not subscribed" scenario arranges a *different* student's
+  subscription to the same course, to prove per-student isolation — but GWT's
+  `given().when()` rejects any given event outside the slice's own boundary
+  tags (`AssertionError: Consistency boundary wouldn't have selected: ...`).
+  Split the coverage: the acceptance test proves `not_subscribed` with a
+  boundary-compliant history (course registered, nobody subscribed); the
+  cross-student isolation case moved to the integration suite, seeding both
+  students' histories directly via `app.events.append`, per CLAUDE.md's own
+  note that this property "belongs in the integration suite."
+- `TSlice` (application.py) and `Sequence` (slice.py) were both flagged by
+  ruff `TCxxx` for being importable only under `TYPE_CHECKING` — neither is a
+  Pydantic field type nor a FastAPI dependency parameter, so the general
+  `from __future__ import annotations` + `TYPE_CHECKING` guard applied cleanly
+  (the two documented exceptions in CLAUDE.md's FastAPI/Pydantic gotchas did
+  not apply here).
+- Ran `hatch run acceptance-tests:run`, `integration-tests:run`, `unit-tests:run`
+  (all passing, 8+8+1), `hatch run style:check .` (clean), `hatch run
+  types:check` (0 errors) before committing. No dependency changes in this
+  slice, so no lock-file regeneration was needed.
+- Slice complete: marked "Done" in `index.json`, `slice.json`, and via
+  `update_slice_status` MCP. Merged `feature/unsubscribestudent` into `restart`.
