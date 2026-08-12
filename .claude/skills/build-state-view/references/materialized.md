@@ -813,21 +813,34 @@ The top-level FastAPI application is `src/snake_case({ProjectName})/main.py`.
 Unlike the other approaches, this one *does* touch its `lifespan`, because the
 view has to be built and its runner started with the app.
 
+**This is an edit to an existing file, never a replacement.** `main.py` was
+written at *First-time project setup* (`.build-kit/CLAUDE.md` → step 6) and every
+later slice has added a router line to it. Pasting the block below over that file
+deletes work — most damagingly `create_app()` itself, which the integration
+suite imports, and the telemetry wiring, which nothing would report as missing.
+Lines this slice adds are marked `# ADD`; everything else is shown so you can see
+where they go, and should already be there.
+
 ```python
 from collections.abc import AsyncIterator
-from contextlib import AsyncExitStack, asynccontextmanager
-from functools import partial
+from contextlib import AsyncExitStack, asynccontextmanager      # ADD AsyncExitStack
+from functools import partial                                   # ADD
 
 from fastapi import FastAPI
 
 from snake_case({ProjectName}).application import {ProjectName}App
-from snake_case({ProjectName}).projection import ProjectionSupervisor
-from snake_case({ProjectName}).snake_case({Context}).snake_case({SliceName}).projection import (
+from snake_case({ProjectName}).projection import ProjectionSupervisor   # ADD
+from snake_case({ProjectName}).snake_case({Context}).snake_case({SliceName}).projection import (  # ADD
     create_runner,
     create_view,
 )
-from snake_case({ProjectName}).snake_case({Context}).snake_case({SliceName}).routes import (
+from snake_case({ProjectName}).snake_case({Context}).snake_case({SliceName}).routes import (      # ADD
     router as snake_case({SliceName})_router,
+)
+from snake_case({ProjectName}).telemetry import (
+    configure_telemetry,
+    instrument_app,
+    instrument_recorder,
 )
 
 
@@ -836,27 +849,40 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[dict[str, object]]:
     """Open the application and every supervised projection for the app's life."""
     async with AsyncExitStack() as stack:
         dcb_app = stack.enter_context({ProjectName}App())
-        supervisor = ProjectionSupervisor(context_name=dcb_app.context_name)
+        instrument_recorder(dcb_app)   # AFTER construction — `recorder` is set in `__init__`
+        supervisor = ProjectionSupervisor(context_name=dcb_app.context_name)   # ADD
 
-        snake_case({SliceName})_view = create_view()
-        supervisor.register(
+        snake_case({SliceName})_view = create_view()                           # ADD
+        supervisor.register(                                                   # ADD
             "snake_case({SliceName})",
             snake_case({SliceName})_view,
             partial(create_runner, dcb_app, snake_case({SliceName})_view),
         )
         # supervisor.register("other_slice", other_view, partial(...))
 
-        stack.enter_context(supervisor)
+        stack.enter_context(supervisor)                                        # ADD
         yield {
             "dcb_app": dcb_app,
-            "snake_case({SliceName})_view": snake_case({SliceName})_view,
-            "projection_supervisor": supervisor,
+            "snake_case({SliceName})_view": snake_case({SliceName})_view,      # ADD
+            "projection_supervisor": supervisor,                               # ADD
         }
 
 
-app = FastAPI(lifespan=lifespan)
-app.include_router(snake_case({SliceName})_router)
+def create_app() -> FastAPI:
+    """Build the FastAPI application, wiring in every slice's router."""
+    configure_telemetry()          # FIRST — `instrument_app` reads the state it sets
+    app = FastAPI(lifespan=lifespan)
+    instrument_app(app)
+    # ... every earlier slice's existing `include_router` lines, untouched ...
+    app.include_router(snake_case({SliceName})_router)                         # ADD
+    return app
 ```
+
+If this is the project's first projection, the lifespan being upgraded is the
+`with {ProjectName}App() as dcb_app:` form from step 6. Move
+`instrument_recorder(dcb_app)` along with it, to immediately after
+`stack.enter_context(...)` — same principle, same reason. Dropping it is silent:
+no test fails, no route breaks, the event store simply stops being traced.
 
 Details that are load-bearing rather than stylistic:
 
@@ -866,6 +892,10 @@ Details that are load-bearing rather than stylistic:
 - **Enter order is the teardown contract.** The application goes in **first** so
   it closes **last** — every runner must be stopped before the store it reads
   from is closed. The supervisor goes in after it and therefore exits before it.
+- **`instrument_recorder(dcb_app)` stays immediately after the application is
+  entered**, before the supervisor exists. `recorder` is set in `__init__`, and
+  the runners the supervisor starts read through it — instrument it after they
+  are running and the first events they process go untraced.
 - **One supervisor per process, shared by every slice.** Adding a second
   materialized slice adds a `create_view()` + `register(...)` pair and one more
   key in the yielded mapping — never a second supervisor, and never a second
@@ -880,11 +910,11 @@ Details that are load-bearing rather than stylistic:
 - **The lifespan yields the view, never the runner** — the supervisor swaps
   runners, so a reference held elsewhere could point at a dead one.
 
-If a top-level app already exists (it normally does — the command slices need
-one), add the three lines for this slice to its existing lifespan rather than
-writing a new function: `create_view()`, `supervisor.register(...)`, and one
-key in the yielded mapping. Create `supervisor` and the `AsyncExitStack` only if
-this is the first projection in the project.
+If the project already has a supervisor (any earlier projection slice built one),
+this slice adds only three lines to the existing lifespan — `create_view()`,
+`supervisor.register(...)`, and one key in the yielded mapping — plus its
+`include_router`. Create `supervisor` and the `AsyncExitStack` only if this is
+the project's first projection.
 
 Once the router is included the route exists on the real app, so **regenerate the
 spec and stage it with the slice**:

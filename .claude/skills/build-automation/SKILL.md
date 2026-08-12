@@ -684,11 +684,19 @@ Points that matter:
 ### Wiring it into the app lifespan
 
 The runner is started by the process-wide `ProjectionSupervisor` in
-`src/snake_case({ProjectName})/main.py`, which restarts it if the processing thread dies:
+`src/snake_case({ProjectName})/main.py`, which restarts it if the processing thread dies.
+
+The block below is the **body of the existing `lifespan`**, not a whole file — edit
+`main.py` in place. It already holds `create_app()` with `configure_telemetry()` and
+`instrument_app(app)` from *First-time project setup* (`.build-kit/CLAUDE.md` → step 6);
+leave both alone. If this is the project's first projection, the lifespan is still the
+`with {ProjectName}App() as dcb_app:` form — upgrading it to an `AsyncExitStack` must carry
+`instrument_recorder(dcb_app)` across, or the event store silently stops being traced.
 
 ```python
 async with AsyncExitStack() as stack:
     dcb_app = stack.enter_context({ProjectName}App())   # entered FIRST -> closed LAST
+    instrument_recorder(dcb_app)                        # AFTER construction — `recorder` is set in `__init__`
     supervisor = ProjectionSupervisor(context_name=dcb_app.context_name)
 
     snake_case({SliceName})_view = create_view()
@@ -709,6 +717,9 @@ async with AsyncExitStack() as stack:
 - **`stack.enter_context`, not `enter_async_context`** — both are sync context managers.
 - **Enter order is the teardown contract.** The application goes in first so it closes
   last; every runner stops before the store it reads from does.
+- **`instrument_recorder(dcb_app)` stays immediately after the application is entered**,
+  before the supervisor exists — the runners it starts read through that recorder, so
+  instrumenting later leaves the first events they process untraced.
 - **One supervisor per process**, shared with every other projection. Adding this
   automation to an app that already has one adds a `create_view()` + `register(...)` pair
   and one key in the yielded mapping — nothing else.
@@ -719,10 +730,9 @@ async with AsyncExitStack() as stack:
   synchronize on.
 - **An automation with no HTTP surface still belongs in this lifespan.** Do not give it
   its own process or its own application; the loop only closes over a shared store.
-- **An instrumented project counts restarts here.** The supervisor is the only place
-  that knows a runner died, so increment a restart counter where it rebuilds one, and
-  expose lag as an observable gauge (see `build-state-view` → *Reporting projection
-  health*). An automation with no route needs this more than a view does, not less:
+- **Count restarts here.** The supervisor is the only place that knows a runner died, so
+  increment a restart counter where it rebuilds one, and expose lag as an observable
+  gauge (see `build-state-view` → *Reporting projection health*). An automation with no route needs this more than a view does, not less:
   without an HTTP surface, a silently dead automation has no other symptom.
 
 ---
