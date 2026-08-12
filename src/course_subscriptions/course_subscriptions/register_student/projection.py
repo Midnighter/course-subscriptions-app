@@ -26,6 +26,7 @@ from course_subscriptions.course_subscriptions.register_student.slice import (
     RegisterStudentSlice,
 )
 from course_subscriptions.projection import SharedAppProjectionRunner
+from course_subscriptions.telemetry import consumer_span
 
 if TYPE_CHECKING:
     from eventsourcing.utils import EnvType
@@ -141,25 +142,26 @@ class RegisterStudentProjection(Projection[RegisterStudentView, TaggedEvent[Deci
         tracking: Tracking,
     ) -> None:
         """Fire Register Student on the trigger; drain the entry on its event."""
-        match envelope.decision:
-            case ExternalStudentRegistered(
-                student_id=student_id,
-                name=name,
-                course_limit=course_limit,
-            ):
-                entry = RegisterStudentEntry(
+        with consumer_span(envelope, "register_student"):
+            match envelope.decision:
+                case ExternalStudentRegistered(
                     student_id=student_id,
                     name=name,
                     course_limit=course_limit,
-                )
-                # Record before commanding: a lingering entry is the
-                # observable signal that the command did not land.
-                self.view.add_entry(entry, tracking)
-                self._fire(entry, _causation_metadata(envelope))
-            case StudentRegistered(student_id=student_id):
-                self.view.remove_entry(student_id, tracking)
-            case _:
-                self.view.insert_tracking(tracking)
+                ):
+                    entry = RegisterStudentEntry(
+                        student_id=student_id,
+                        name=name,
+                        course_limit=course_limit,
+                    )
+                    # Record before commanding: a lingering entry is the
+                    # observable signal that the command did not land.
+                    self.view.add_entry(entry, tracking)
+                    self._fire(entry, _causation_metadata(envelope))
+                case StudentRegistered(student_id=student_id):
+                    self.view.remove_entry(student_id, tracking)
+                case _:
+                    self.view.insert_tracking(tracking)
 
     def _fire(self, entry: RegisterStudentEntry, metadata: dict[str, str]) -> None:
         """Issue the command under the given metadata, swallowing failures."""

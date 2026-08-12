@@ -35,6 +35,11 @@ from course_subscriptions.course_subscriptions.unsubscribe_student import (
     routes as unsubscribe_student_routes,
 )
 from course_subscriptions.projection import ProjectionSupervisor
+from course_subscriptions.telemetry import (
+    configure_telemetry,
+    instrument_app,
+    instrument_recorder,
+)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -45,6 +50,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[dict]:
     """Construct the process-wide application and its projections."""
     async with AsyncExitStack() as stack:
         dcb_app = stack.enter_context(CourseSubscriptionsApp())  # entered FIRST
+        instrument_recorder(dcb_app)  # AFTER construction — recorder is set in __init__
         supervisor = ProjectionSupervisor(context_name=dcb_app.context_name)
 
         register_student_view = create_register_student_view()
@@ -64,7 +70,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[dict]:
 
 def create_app() -> FastAPI:
     """Build the FastAPI application, wiring in every slice's router."""
+    configure_telemetry()  # FIRST — `instrument_app` reads the state it sets
     app = FastAPI(lifespan=lifespan)
+    instrument_app(app)
     app.include_router(student_course_subscriptions_routes.router)
     app.include_router(subscribe_student_routes.router)
     app.include_router(unsubscribe_student_routes.router)
