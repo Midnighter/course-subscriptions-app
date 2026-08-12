@@ -13,11 +13,29 @@ Read this when:
 `telemetry.py` is shared runtime, written **once** per project. If it already exists,
 import from it and change nothing.
 
-Substitute the placeholders as everywhere else in the kit: `{ProjectName}` is
-`[project] name` from `pyproject.toml` in PascalCase, and `snake_case({ProjectName})` is
-the single top-level package under `src/`. Every file below still needs the copyright
-header and docstrings the pre-commit hooks enforce — they are present in these templates,
-unlike the abbreviated ones in the build skills.
+### Placeholders
+
+Every placeholder used below, so you do not have to open a build skill to resolve one.
+All are **PascalCase**; the `snake_case(...)` and `upper_snake_case(...)` forms are derived
+from them at code-generation time, never carried separately.
+
+| Placeholder | Derived from | Example |
+|---|---|---|
+| `{ProjectName}` | `[project] name` in `pyproject.toml`, PascalCase | `CourseSubscriptions` |
+| `snake_case({ProjectName})` | the single top-level package under `src/` — **confirm it on disk** rather than deriving a name that is not there | `course_subscriptions` |
+| `{ProjectAuthor}` | `name` from `[project] authors` — copy the exact spelling already used by existing modules | `Moritz E. Beber` |
+| `{YYYY}` | the current year, matching the headers on existing modules | `2026` |
+| `{Context}` | the bounded context in PascalCase, from the slice definition's `context` field. `snake_case({Context})` is the sub-package under the project package | `CourseSubscriptions` → `src/course_subscriptions/course_subscriptions/` |
+| `{SliceName}` | the slice title in PascalCase | `RegisterStudent` |
+| `{EventName}` | any event `Decision` in `snake_case({Context})/events.py` — the tests only need one that exists | `CourseRegistered` |
+
+A project's context often shares its name with the project, which is why the package path
+doubles up (`src/course_subscriptions/course_subscriptions/`). That is expected, not a
+mistake to correct.
+
+Every file below still needs the copyright header and docstrings the pre-commit hooks
+enforce — they are present in these templates, unlike the abbreviated ones in the build
+skills.
 
 ---
 
