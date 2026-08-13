@@ -6,3 +6,17 @@ from the [dcb.events](https://dcb.events/examples/course-subscriptions/) using
 the [pyeventsourcing
 build-kit](https://github.com/Midnighter/build-kit-pyeventsourcing) with a few
 post generation adjustments.
+
+## Usage
+
+Try out the app locally with
+
+```sh
+hatch run dev:fastapi -- dev
+```
+
+then run the manual scenario
+
+```sh
+hatch run dev:python3 scripts/manual_scenario.py
+```
