@@ -64,6 +64,10 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[dict]:
         supervisor = ProjectionSupervisor(context_name=dcb_app.context_name)
 
         register_student_view = create_register_student_view()
+        # Registered BEFORE the supervisor is entered, so it runs AFTER the
+        # supervisor stops: closing a connection pool out from under a live
+        # projection thread would fail. A no-op on the in-memory backend.
+        stack.callback(register_student_view.close)
         supervisor.register(
             "register_student",
             register_student_view,
