@@ -1,0 +1,28 @@
+ARG TAG="3.14.6-slim"
+FROM python:${TAG}
+
+RUN set -eux \
+    && apt-get update \
+    && apt-get install --yes --no-install-recommends \
+        pipx \
+        jq
+
+RUN set -eux \
+    && pipx install hatch \
+    && pipx ensurepath
+
+ENV PATH="${PATH}:/root/.local/bin"
+
+WORKDIR /app
+
+COPY pyproject.toml README.md requirements* ./
+
+COPY src/ ./src/
+
+ENV SETUPTOOLS_SCM_PRETEND_VERSION="0.1.0"
+
+RUN hatch env show --json \
+    | jq -r 'keys[] | select(. != "default") | select(startswith("hatch-") | not)' \
+    | xargs -I{} sh -c 'hatch env create "{}"'
+
+CMD ["hatch", "run", "dev:fastapi", "--", "dev", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,0 +1,22 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.development
+    container_name: course-app
+    environment:
+      OTEL_SERVICE_NAME: course-app
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://observability:4317
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    depends_on:
+      observability:
+        condition: service_started
+
+  observability:
+    image: cr.jaegertracing.io/jaegertracing/jaeger:2.20.0
+    container_name: course-app-observability
+    ports:
+      - "16686:16686"
