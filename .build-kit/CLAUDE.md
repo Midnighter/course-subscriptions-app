@@ -7,6 +7,8 @@ Placeholders below follow the build skills: `{ProjectName}` is `[project] name` 
 ## Tooling
 
 - **hatch** manages every Python environment. Never call `python`/`pip`/`pytest` directly — use `hatch -e dev run <cmd>` or `hatch -e dev shell`. Each test suite has its own env: `unit-tests`, `acceptance-tests`, `integration-tests`, `documentation-tests`.
+- **Run a suite as `hatch -e <env> run run`.** Each of those four envs defines its own `run` script that already carries the coverage flags *and the path to that suite's directory*. Running the whole set is four invocations, one per env; there is no single command that runs everything.
+- **Never `hatch -e <env> run pytest` with no path.** `[tool.pytest.ini_options] testpaths = ["tests"]` is global, so a bare `pytest` collects **every** suite from inside a single suite's env — where the other suites' dependencies are absent, and where the duplicate basenames below collide. Naming a path explicitly (`hatch -e unit-tests run pytest tests/unit/test_projection.py -q --no-cov`) is fine and is the right way to iterate on one file.
 - **pre-commit** runs on every commit. All hooks must pass; the list is authoritative in `.pre-commit-config.yaml`.
 - **Commit each unit of work.** When a coherent chunk is done (a slice, a bug fix, a refactor), commit it. `git commit` triggers the pre-commit hooks, which is the intended way to catch header/docstring/style violations — don't rely on eyeballing the compliance rules below. If a hook rewrites files, stage the result and re-run until the commit succeeds.
 
@@ -52,7 +54,7 @@ OpenTelemetry covers three seams the library gives no help with: the command pat
 
 ## Test layout
 
-- **No `__init__.py` under `tests/`.** Pytest doesn't need it; adding them is unwanted clutter.
+- **No `__init__.py` under `tests/`.** Pytest doesn't need it; adding them is unwanted clutter. The consequence is that test modules are imported by basename, and a slice contributes `test_snake_case({SliceName}).py` to *both* `tests/acceptance/` and `tests/integration/` — so any single collection spanning both suites aborts with `import file mismatch`. That is the second reason a suite is run by its own `run` script and never by a bare `pytest` (see *Tooling*), and it is not a defect to "fix" by adding package markers.
 - **`@pytest.fixture`** — no parentheses (`PT001`).
 - **`tests/acceptance/`** — for `Slice`-based slices (state-change, on-demand view), given/when/then tests using `eventsourcing.dcb.gwt`. For `Projection`-based slices (automation, materialized view), GWT cannot drive a `Projection`: construct the view and projection directly and call `process_event` yourself — no `DcbApplication`, no runner, no background thread.
 - **`tests/integration/`** — API-level tests using `fastapi.testclient.TestClient` against the real `create_app()`, via the shared `client` fixture in `tests/integration/conftest.py`. Never build a local `FastAPI()`: testing the real app is what catches route-prefix collisions between slices.
@@ -294,7 +296,8 @@ Runners are **threads in the API process**. This is not a design choice: the lib
 
 - **Never let a runner construct its own application.** `ProjectionRunner` calls `application_class(env=env)` internally, giving it a private store; under POPO that store is invisible to the routes writing through `{ProjectName}App`, so the view never updates and an automation never sees its trigger. Use `BaseProjectionRunner`, which takes an already-constructed `app`.
 - **`BaseProjectionRunner.__exit__` unconditionally calls `self.app.close()`,** with no flag or hook to prevent it. `SharedAppProjectionRunner` in `src/snake_case({ProjectName})/projection.py` overrides `__exit__` wholesale to drop that one call. Under POPO `close()` is a no-op so the bug is invisible; on Postgres it closes a connection pool that **cannot be reopened** (`PoolClosed` on every later request).
-- **That override reaches into four private attributes** (`_stop_thread`, `_subscription`, `_processing_thread`, `_thread_error`) of an alpha library. It lives in exactly one hand-written module so a version bump has one place to audit, and `tests/unit/test_projection.py` asserts the app survives a runner exit — that test is the upgrade tripwire.
+- **That override reaches into four private attributes** (`_stop_thread`, `_subscription`, `_processing_thread`, `_thread_error`) of an alpha library. It lives in exactly one hand-written module so a version bump has one place to audit.
+- **Write the upgrade tripwire in the same step as `projection.py`** — `tests/unit/test_projection.py`, asserting that exiting a runner does **not** close the shared application. Assert on the `close()` call itself (wrap `app.close` and check it was never invoked), not merely that the app still works: under POPO `close()` is a no-op, so a reintroduced close passes every behavioural check and only surfaces on Postgres, where the pool cannot reopen. A tripwire you have not seen fail is not a tripwire — add `self.app.close()` to the override, watch the test fail, then take it out again.
 - **Constructing a runner starts it.** `__init__` subscribes at `gt=tracking_recorder.max_tracking_id(...)` and starts both threads; `__enter__` only enters the subscription. There is no deferred start.
 - **The view is the stable identity, not the runner.** Restarts replace the runner but keep the view, so the view is what goes in lifespan state, what routes depend on, and what tests `wait()` on. Build it once with `create_view()`; `create_runner(app, view)` may be called repeatedly.
 - **Lifespan ownership**: the application is entered **first** so it closes **last**; the supervisor is entered after it and torn down before it. Both are *sync* context managers — use `AsyncExitStack.enter_context`, not `enter_async_context`.
@@ -352,7 +355,16 @@ if head is not None and tracked is not None:
 
 **Both calls return `int | None`.** Before the projection has processed anything its lag is *undefined*, not zero — skip the observation rather than reporting a fake backlog the moment the process starts.
 
-**Cover the 503 in `tests/integration/`.** Drive a projection past `max_restarts` — a view whose mutator raises on every event is the cheapest way — then assert the status is 503 and that the body names the failed projection. A health route that has only ever been observed returning 200 is not known to work; this is the one path that matters, and it is unreachable through any other endpoint.
+**Cover the 503 in `tests/integration/`.** A health route that has only ever been observed returning 200 is not known to work; this is the one path that matters, and it is unreachable through any other endpoint.
+
+It is also unreachable through the app's *own* supervisor, and that is by design rather than an oversight: an automation guards its command port (`_fire`) precisely so a poison command never kills the processing thread, so no request sequence can drive the real wiring terminal. Don't try to defeat that guard. Instead:
+
+1. Build a **second, entirely real** `ProjectionSupervisor` over its own application — real supervisor, real `SharedAppProjectionRunner`, real watchdog thread, real restart-counting. Nothing is mocked except the projection itself, whose `process_event` raises unconditionally.
+2. Register it with `max_restarts=0` and `poll_interval=0.1`, so one genuine exception is enough to give up for good and the watchdog notices in a tenth of a second.
+3. Append one triggering event, then wait for the watchdog. The poisoned view never inserts tracking, so it never advances — `pytest.raises(TimeoutError)` around `view.wait(..., notification_id=1, timeout=2)` is a blocking, non-busy way to hand it wall-clock time. Assert on `supervisor.failures()` before touching the route, so a failure here is distinguishable from a routing bug.
+4. Substitute it for the app's own via `client.app_state["projection_supervisor"] = supervisor` — `app_state` is the same mutable dict the lifespan populates and the `client` fixture already reads, so the route under test is the genuine one from `main.py`, reading `request.state.projection_supervisor` exactly as in production.
+
+Two things to be plain about in the test's own docstring: the 503 path never flows through the supervisor `main.py` constructs, and step 3 costs the full timeout (~2s) on every green run, because the timeout *is* the synchronisation.
 
 ### Projections (materialized views)
 

@@ -56,7 +56,7 @@ command emits never comes back to drain the ledger. That is why Step 5 uses
 
 ## Step 0 — Verify the shared runtime
 
-A slice is built *on* the shared runtime; it never carries a copy of it. Before reading the slice definition, confirm each of these exists under `src/snake_case({ProjectName})/`:
+A slice is built *on* the shared runtime; it never carries a copy of it. Before reading the slice definition, confirm each of these exists — under `src/snake_case({ProjectName})/` unless another path is given:
 
 | Module | If missing |
 |--------|------------|
@@ -66,6 +66,7 @@ A slice is built *on* the shared runtime; it never carries a copy of it. Before 
 | `application.py` | ditto — including the `do()` override and the `command_span` inside it |
 | `main.py` | ditto — including `configure_telemetry()`, `instrument_app()` and `instrument_recorder()` |
 | `projection.py` | `.build-kit/CLAUDE.md` → *Projection runners*; **required** by this slice type — see Step 5 |
+| `tests/unit/test_projection.py` | ditto — the upgrade tripwire that pairs with `projection.py`; **its absence is invisible**, since a suite passes just as green without it |
 | `/healthz` in `main.py` | `.build-kit/CLAUDE.md` → *Supervising projections*; required once a supervisor exists, and this slice type registers one |
 
 A missing module is an incomplete setup, not an opt-out — in particular, **do not skip a slice's instrumentation because `telemetry.py` is absent.** Create what is missing, run the test suites, and commit it on its own as a `chore:` **before** starting the slice: a shared-runtime module folded into a `feat:` commit is unreviewable and reads as slice-specific when it is not.
@@ -1032,6 +1033,9 @@ src/snake_case({ProjectName})/snake_case({Context})/snake_case({SliceName})/
     projection.py                     # view, projection, runner, create_view, create_runner
     slice.py                          # only if the model defines a failure event
 
+tests/unit/
+    test_projection.py                # SHARED RUNTIME — the upgrade tripwire; create alongside projection.py, never per-slice
+
 tests/acceptance/snake_case({Context})/snake_case({SliceName})/
     test_snake_case({SliceName}).py   # direct process_event calls, fake ports, drain()
 
@@ -1064,6 +1068,7 @@ The command slice under
 - [ ] `drain()` implemented, and called in `create_runner()` **before** the runner is constructed
 - [ ] `{SliceName}Runner` subclasses `SharedAppProjectionRunner`, and sets `self.view` itself
 - [ ] `src/snake_case({ProjectName})/projection.py` exists (created only if absent — never per-slice)
+- [ ] `tests/unit/test_projection.py` asserts the runner's `__exit__` never calls `app.close()`, and that assertion was watched to fail against a deliberately reintroduced close
 - [ ] `create_view()` and `create_runner(app, view)` are separate; the runner never constructs a `DcbApplication`
 - [ ] `create_runner(app, view)` is safe to call repeatedly over the same view — that is the supervisor's restart path
 - [ ] The lifespan enters the application **first** and the supervisor after it, both via `stack.enter_context`, and yields the view (never the runner)
@@ -1080,5 +1085,5 @@ The command slice under
 - [ ] The `drain()` recovery test builds its own view and app, consuming the position **before** any runner is constructed
 - [ ] No `routes.py` created (automations are not exposed via HTTP) — `/healthz` is the one exception, and it is operational, not this slice's surface
 - [ ] `/healthz` exists in `create_app()` and its 503 path has an integration test; added here if this slice registered the project's first supervisor, left untouched if an earlier one did
-- [ ] Step 0 ran: `command.py`, `telemetry.py`, `application.py`, `main.py` and `projection.py` all exist, and anything created there was committed as a `chore:` before this slice
+- [ ] Step 0 ran: `command.py`, `telemetry.py`, `application.py`, `main.py`, `projection.py` and `tests/unit/test_projection.py` all exist, and anything created there was committed as a `chore:` before this slice
 - [ ] `process_event`'s `match` is wrapped in one `consumer_span(envelope, ...)` that re-raises, and `_fire`'s narrow guard is left untouched

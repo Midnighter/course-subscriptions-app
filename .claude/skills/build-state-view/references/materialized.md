@@ -1025,6 +1025,8 @@ src/snake_case({ProjectName})/snake_case({Context})/snake_case({SliceName})/
     __init__.py                                           # package marker
     projection.py                                         # View interface + POPO impl (+ Postgres impl only if deployed) + Projection + Runner + create_view() + create_runner()
     routes.py                                             # FastAPI router reading the view from request.state
+tests/unit/
+    test_projection.py                                    # SHARED RUNTIME — the upgrade tripwire; create alongside projection.py, never per-slice
 tests/acceptance/snake_case({Context})/snake_case({SliceName})/
     test_snake_case({SliceName}).py                       # projection-level tests (direct process_event calls, no runner)
 tests/integration/snake_case({Context})/
@@ -1036,4 +1038,6 @@ per slice** — it holds the one hand-written `__exit__` override that couples t
 private `BaseProjectionRunner` attributes, plus the supervisor every projection
 registers with. If it already exists, import from it and change nothing; if it
 does not, create it once (see `.build-kit/CLAUDE.md` → *Projection runners* and
-*Supervising projections* for exactly what it must guarantee).
+*Supervising projections* for exactly what it must guarantee) — together with
+`tests/unit/test_projection.py`, the tripwire that catches a library upgrade
+putting `app.close()` back into `__exit__`.
