@@ -359,6 +359,29 @@
         ]
       }
     },
+    "/healthz": {
+      "get": {
+        "description": "Report whether every supervised projection is still running.",
+        "operationId": "healthz_healthz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Healthz Healthz Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Healthz"
+      }
+    },
     "/students/{student_id}/course-subscriptions": {
       "get": {
         "description": "Return a student's current course subscriptions.",

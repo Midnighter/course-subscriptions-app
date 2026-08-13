@@ -7,7 +7,7 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from functools import partial
 from typing import TYPE_CHECKING
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request, status
 
 from course_subscriptions.application import CourseSubscriptionsApp
 from course_subscriptions.course_subscriptions.change_course_capacity import (
@@ -79,4 +79,16 @@ def create_app() -> FastAPI:
     app.include_router(change_course_capacity_routes.router)
     app.include_router(register_course_routes.router)
     app.include_router(course_catalogue_routes.router)
+
+    @app.get("/healthz")
+    async def healthz(request: Request) -> dict[str, str]:
+        """Report whether every supervised projection is still running."""
+        failures = request.state.projection_supervisor.failures()
+        if failures:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={name: str(error) for name, error in failures.items()},
+            )
+        return {"status": "ok"}
+
     return app
