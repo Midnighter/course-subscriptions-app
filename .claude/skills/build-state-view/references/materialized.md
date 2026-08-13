@@ -177,6 +177,14 @@ class {SliceName}View(TrackingRecorder):
     ) -> None:
         """Append an entry for `entity_id`, atomically with the tracking position."""
 
+    def close(self) -> None:
+        """Release whatever the backend holds open. Idempotent.
+
+        Deliberately concrete, not abstract: a backend with nothing to release
+        inherits this no-op, which is what lets the lifespan call `close()`
+        without knowing which implementation it built.
+        """
+
 
 class POPO{SliceName}View(POPOTrackingRecorder, {SliceName}View):
     """In-memory {SliceName} view, backed by the POPO tracking recorder."""
@@ -303,8 +311,6 @@ POPO implementation above is the whole story. Note how it differs from the POPO
 version on every point in the *Backend-specific mechanics* table:
 
 ```python
-from typing import Any
-
 from eventsourcing.postgres import PostgresDatastore, PostgresTrackingRecorder
 from psycopg.sql import SQL, Identifier
 
@@ -312,7 +318,10 @@ from psycopg.sql import SQL, Identifier
 class Postgres{SliceName}View(PostgresTrackingRecorder, {SliceName}View):
     """Durable {SliceName} view, backed by the Postgres tracking recorder."""
 
-    def __init__(self, datastore: PostgresDatastore, **kwargs: Any) -> None:
+    def __init__(self, datastore: PostgresDatastore, **kwargs) -> None:
+        # Append the DDL *after* super().__init__(): PostgresRecorder.__init__
+        # assigns `sql_create_statements` a fresh list, so an earlier append is
+        # silently discarded and the entries table is never created.
         super().__init__(datastore, **kwargs)
         self.entries_table_name = "snake_case({SliceName})_entries"
         self.check_identifier_length(self.entries_table_name)
@@ -351,6 +360,7 @@ class Postgres{SliceName}View(PostgresTrackingRecorder, {SliceName}View):
     ) -> None:
         """Append an entry for `entity_id`, atomically with the tracking position."""
         with self.datastore.transaction(commit=True) as curs:
+            self._insert_tracking(curs, tracking)
             curs.execute(
                 SQL("INSERT INTO {0}.{1} VALUES (%s, %s, %s)").format(
                     Identifier(self.datastore.schema),
@@ -358,13 +368,27 @@ class Postgres{SliceName}View(PostgresTrackingRecorder, {SliceName}View):
                 ),
                 (entity_id, entry.field1, entry.field2),
             )
-            self._insert_tracking(curs, tracking)
+
+    def close(self) -> None:
+        """Close the connection pool. Idempotent."""
+        self.datastore.close()
 ```
 
 The `datastore` argument is supplied by `PostgresFactory.tracking_recorder`,
 which also passes a `tracking_table_name` derived from `Projection.name` and
 calls `create_table()` — so `__init__` must accept and forward `**kwargs`
-rather than fixing its own signature.
+rather than fixing its own signature. **Leave `**kwargs` unannotated** — the
+project ignores `ANN003` (missing annotation), but annotating it `Any` trips
+`ANN401` and the module cannot be committed.
+
+**`_insert_tracking` comes first in a mutating method**, before any domain
+statement. It is the Postgres counterpart to POPO's explicit
+`_assert_tracking_uniqueness` guard: a redelivered or stale notification raises
+`IntegrityError` there and the transaction rolls back either way, so ordering it
+first simply means the redelivery does no domain work at all.
+
+**Add `close()` to the abstract interface too, not just here.** The lifespan
+calls it without knowing which implementation it holds.
 
 To run against it, pass the class and a matching environment to `create_view()`.
 This `env` reaches **only the view's** factory — the runner no longer builds an
@@ -853,6 +877,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[dict[str, object]]:
         supervisor = ProjectionSupervisor(context_name=dcb_app.context_name)   # ADD
 
         snake_case({SliceName})_view = create_view()                           # ADD
+        stack.callback(snake_case({SliceName})_view.close)                     # ADD
         supervisor.register(                                                   # ADD
             "snake_case({SliceName})",
             snake_case({SliceName})_view,
@@ -892,6 +917,13 @@ Details that are load-bearing rather than stylistic:
 - **Enter order is the teardown contract.** The application goes in **first** so
   it closes **last** — every runner must be stopped before the store it reads
   from is closed. The supervisor goes in after it and therefore exits before it.
+- **`stack.callback(view.close)` goes *before* the supervisor is entered**, so
+  it runs *after* the supervisor stops. The view owns a connection pool of its
+  own — `create_view()` builds a `PostgresDatastore` through its own factory,
+  entirely separate from the one `{ProjectName}App` holds — and nothing else
+  ever closes it. Closing it while a projection thread is still writing through
+  it would fail. A no-op on POPO, which is exactly why the leak is invisible
+  until the view is made durable.
 - **`instrument_recorder(dcb_app)` stays immediately after the application is
   entered**, before the supervisor exists. `recorder` is set in `__init__`, and
   the runners the supervisor starts read through it — instrument it after they

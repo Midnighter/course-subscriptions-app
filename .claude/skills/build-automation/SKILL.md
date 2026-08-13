@@ -240,8 +240,21 @@ into the other:
 |---|---|---|
 | Mutual exclusion | `with self._database_lock:` (an `RLock`, POPO-only — it does not exist on the SQL recorders) | a transaction: `with self.datastore.transaction(commit=True) as curs:` |
 | Recording tracking | `self._insert_tracking(tracking)` | `self._insert_tracking(curs, tracking)` — takes the cursor, so the entry and its tracking row commit atomically |
-| Duplicate-tracking check | call `self._assert_tracking_uniqueness(tracking)` yourself | enforced by the tracking table's primary key; `_insert_tracking` raises `IntegrityError` |
-| Extra tables | none — plain Python containers on `self` | append `CREATE TABLE IF NOT EXISTS ...` to `self.sql_create_statements` in `__init__`; the factory calls `create_table()` when `CREATE_TABLE` is not disabled |
+| Duplicate-tracking check | call `self._assert_tracking_uniqueness(tracking)` yourself | enforced by the tracking table's primary key; `_insert_tracking` raises `IntegrityError` — so put it **first** in a mutating method, and a redelivered notification does no domain work before the rollback |
+| Extra tables | none — plain Python containers on `self` | append `CREATE TABLE IF NOT EXISTS ...` to `self.sql_create_statements` in `__init__`, **after** `super().__init__()` — `PostgresRecorder.__init__` assigns that attribute a fresh list, so an earlier append is silently discarded. The factory calls `create_table()` when `CREATE_TABLE` is not disabled |
+| Releasing resources | nothing to release | `close()` closes the datastore's connection pool — see *Wiring it into the app lifespan* |
+
+Give `{SliceName}View` a concrete, do-nothing `close()` alongside its abstract
+methods, and override it only on the Postgres implementation. It must not be
+abstract: the lifespan calls it without knowing which backend it built, and a
+POPO-only project would otherwise have to implement a method that does nothing.
+
+A Postgres `__init__` takes `(self, datastore: PostgresDatastore, **kwargs)` —
+the factory supplies `datastore` and a `tracking_table_name` derived from
+`Projection.name`, so the signature must forward `**kwargs` rather than fix its
+own. **Leave `**kwargs` unannotated**: the project ignores `ANN003` (missing
+annotation), but annotating it `Any` trips `ANN401` and the module cannot be
+committed.
 
 In both cases the point is the same: **the entry and its `Tracking` must be persisted in
 one atomic step**, so a crash cannot leave the view holding a work item whose position
@@ -701,6 +714,7 @@ async with AsyncExitStack() as stack:
     supervisor = ProjectionSupervisor(context_name=dcb_app.context_name)
 
     snake_case({SliceName})_view = create_view()
+    stack.callback(snake_case({SliceName})_view.close)  # runs AFTER the supervisor stops
     supervisor.register(
         "snake_case({SliceName})",
         snake_case({SliceName})_view,
@@ -718,6 +732,12 @@ async with AsyncExitStack() as stack:
 - **`stack.enter_context`, not `enter_async_context`** — both are sync context managers.
 - **Enter order is the teardown contract.** The application goes in first so it closes
   last; every runner stops before the store it reads from does.
+- **`stack.callback(view.close)` goes *before* the supervisor is entered**, so it runs
+  *after* the supervisor stops. The view owns a connection pool of its own —
+  `create_view()` builds a `PostgresDatastore` through its own factory, separate from
+  the one `{ProjectName}App` holds — and nothing else ever closes it. Closing it while a
+  projection thread is still writing through it would fail. A no-op on POPO, which is
+  why the leak stays invisible until the ledger is made durable.
 - **`instrument_recorder(dcb_app)` stays immediately after the application is entered**,
   before the supervisor exists — the runners it starts read through that recorder, so
   instrumenting later leaves the first events they process untraced.
