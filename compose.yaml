@@ -5,6 +5,8 @@ services:
       dockerfile: Dockerfile.development
     container_name: course-app
     environment:
+      SUBSCRIPTIONS_PERSISTENCE_MODULE: "eventsourcing_umadb"
+      UMADB_URI: "http://eventstore:50051"
       OTEL_SERVICE_NAME: course-app
       OTEL_EXPORTER_OTLP_ENDPOINT: http://observability:4317
     ports:
@@ -14,6 +16,15 @@ services:
     depends_on:
       observability:
         condition: service_started
+      eventstore:
+        condition: service_started
+
+  eventstore:
+    image: umadb/umadb:0.7.5
+    container_name: course-app-eventstore
+    command: ["--listen", "0.0.0.0:50051", "--db-path", "/data"]
+    volumes:
+      - ./eventstore:/data
 
   observability:
     image: cr.jaegertracing.io/jaegertracing/jaeger:2.20.0

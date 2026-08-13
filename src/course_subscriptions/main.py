@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import logging
 from contextlib import AsyncExitStack, asynccontextmanager
 from functools import partial
 from typing import TYPE_CHECKING
@@ -48,11 +49,17 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
 
+logger = logging.getLogger("uvicorn.error")
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[dict]:
     """Construct the process-wide application and its projections."""
     async with AsyncExitStack() as stack:
         dcb_app = stack.enter_context(CourseSubscriptionsApp())  # entered FIRST
+        logger.info("%r", dcb_app.__class__.__name__)
+        logger.info("Context name: %r", dcb_app.context_name)
+        logger.info("Recorder type: %r", type(dcb_app.recorder))
         instrument_recorder(dcb_app)  # AFTER construction — recorder is set in __init__
         supervisor = ProjectionSupervisor(context_name=dcb_app.context_name)
 

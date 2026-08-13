@@ -18,6 +18,8 @@ if TYPE_CHECKING:
 class CourseSubscriptionsApp(DcbApplication):
     """The single, process-wide DCB application."""
 
+    context_name = "subscriptions"
+
     def do(self, s: TSlice) -> TSlice:
         """
         Advance, execute and save a slice, capturing a command's outcome.
