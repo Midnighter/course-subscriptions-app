@@ -430,7 +430,6 @@ def _causation_metadata(envelope: TaggedEvent[Decision]) -> dict[str, str]:
     metadata["causation_id"] = str(envelope.uuid)
     return metadata
 
-
     def _fire(self, entry: {EntryName}, metadata: dict[str, str]) -> None:
         """Issue the command under the given metadata, swallowing failures."""
         try:

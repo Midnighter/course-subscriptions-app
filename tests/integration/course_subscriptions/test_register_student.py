@@ -62,11 +62,15 @@ def test_external_registration_triggers_register_student(
 ) -> None:
     """An external registration drives the command and drains the ledger."""
     seed, position = _seed_external_registration(
-        dcb_app, _STUDENT_ID, correlation_id="corr-1",
+        dcb_app,
+        _STUDENT_ID,
+        correlation_id="corr-1",
     )
 
     view.wait(
-        context_name=dcb_app.context_name, notification_id=position + 1, timeout=5,
+        context_name=dcb_app.context_name,
+        notification_id=position + 1,
+        timeout=5,
     )
 
     emitted = next(

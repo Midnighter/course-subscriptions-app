@@ -82,7 +82,8 @@ def test_course_catalogue_counts_subscriptions() -> None:
     )
     unsubscribed = TaggedEvent(
         decision=StudentUnsubscribed(
-            course_id=_COURSE_ID, student_id="STU-2026-0042",
+            course_id=_COURSE_ID,
+            student_id="STU-2026-0042",
         ),
         tags=_TAGS,
     )

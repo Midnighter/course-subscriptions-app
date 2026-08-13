@@ -115,9 +115,14 @@ def test_unrelated_event_still_advances_tracking() -> None:
     view = POPORegisterStudentView()
     projection = RegisterStudentProjection(view=view)
     projection.process_event(
-        TaggedEvent(decision=StudentRegistered(
-            student_id=_STUDENT_ID, name="Anna Müller", course_limit=2,
-        ), tags=_TAGS),
+        TaggedEvent(
+            decision=StudentRegistered(
+                student_id=_STUDENT_ID,
+                name="Anna Müller",
+                course_limit=2,
+            ),
+            tags=_TAGS,
+        ),
         Tracking("upstream", 1),
     )
     assert view.max_tracking_id("upstream") == 1
@@ -138,7 +143,9 @@ def test_drain_refires_an_orphaned_entry(recorder: _Recorder) -> None:
     view = POPORegisterStudentView()
     view.add_entry(
         RegisterStudentEntry(
-            student_id=_STUDENT_ID, name="Anna Müller", course_limit=2,
+            student_id=_STUDENT_ID,
+            name="Anna Müller",
+            course_limit=2,
         ),
         Tracking("upstream", 1),
     )
@@ -174,7 +181,8 @@ def test_drain_skips_entries_past_max_attempts(recorder: _Recorder) -> None:
 def test_drain_is_a_no_op_on_a_clean_view(recorder: _Recorder) -> None:
     """`drain()` does nothing when there are no outstanding entries."""
     projection = RegisterStudentProjection(
-        view=POPORegisterStudentView(), command=recorder,
+        view=POPORegisterStudentView(),
+        command=recorder,
     )
 
     projection.drain()
