@@ -28,9 +28,10 @@ classifiers = [
 keywords = []
 dependencies = [
     "eventsourcing[pydantic,postgres,umadb] ~=10.0.0a7",
-    "psycopg[binary] ~=3.3",
     "fastapi",
     "opentelemetry-api",
+    "psycopg[binary] ~=3.3",
+    "uvicorn[standard]",
 ]
 
 [project.optional-dependencies]
@@ -67,6 +68,9 @@ version-file = "src/course_subscriptions/_version.py"
 
 [tool.hatch.version]
 source = "vcs"
+
+[tool.fastapi]
+entrypoint = "course_subscriptions.main:create_app"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -154,7 +158,7 @@ features = []
 [tool.hatch.envs.dev]
 description = """Development environment."""
 dependency-groups = ["style", "types", "docs", "tests", "integration"]
-extra-dependencies = ["pre-commit"]
+extra-dependencies = ["pre-commit", "fastapi-cli[standard]"]
 features = ["telemetry"]
 
 [tool.hatch.envs.dev.env-vars]
