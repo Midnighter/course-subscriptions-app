@@ -1,5 +1,5 @@
 # Copyright 2026 Moritz E. Beber
-"""Test the Register Student automation end to end."""
+"""Test the Register Student automation and route end to end."""
 
 from __future__ import annotations
 
@@ -140,3 +140,58 @@ def test_drain_recovers_an_orphaned_entry() -> None:
                 timeout=5,
             )
             assert view.get_entries() == []
+
+
+def test_register_student_route_returns_201(client: TestClient) -> None:
+    """Registering a new student via the route returns HTTP 201."""
+    response = client.post(
+        "/student-registrations",
+        json={
+            "student_id": _STUDENT_ID,
+            "name": "Anna Müller",
+            "course_limit": 2,
+        },
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["position"] is not None
+    assert len(body["event_ids"]) == 1
+
+
+def test_register_student_route_already_registered_returns_422(
+    client: TestClient,
+    dcb_app: CourseSubscriptionsApp,
+) -> None:
+    """Registering an already-registered student id returns HTTP 422."""
+    dcb_app.events.append(
+        events=[
+            TaggedEvent(
+                decision=StudentRegistered(
+                    student_id=_STUDENT_ID,
+                    name="Anna Müller",
+                    course_limit=2,
+                ),
+                tags=[f"student:{_STUDENT_ID}"],
+            ),
+        ],
+    )
+
+    response = client.post(
+        "/student-registrations",
+        json={
+            "student_id": _STUDENT_ID,
+            "name": "Anna Müller",
+            "course_limit": 2,
+        },
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"] == "student_already_registered"
+
+
+def test_register_student_route_missing_field_returns_422(client: TestClient) -> None:
+    """A request missing a required field returns HTTP 422."""
+    response = client.post(
+        "/student-registrations",
+        json={"student_id": _STUDENT_ID},
+    )
+    assert response.status_code == 422

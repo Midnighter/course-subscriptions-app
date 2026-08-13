@@ -128,6 +128,30 @@
         "title": "RegisterCourseRequest",
         "type": "object"
       },
+      "RegisterStudentRequest": {
+        "description": "Request body for the Register Student command.",
+        "properties": {
+          "course_limit": {
+            "title": "Course Limit",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "student_id": {
+            "title": "Student Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "student_id",
+          "name",
+          "course_limit"
+        ],
+        "title": "RegisterStudentRequest",
+        "type": "object"
+      },
       "StudentCourseSubscriptionsResponse": {
         "description": "Response body for the Student Course Subscriptions query.",
         "properties": {
@@ -380,6 +404,51 @@
           }
         },
         "summary": "Healthz"
+      }
+    },
+    "/student-registrations": {
+      "post": {
+        "description": "Register a new student with a limit on concurrent course subscriptions.",
+        "operationId": "register_student",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterStudentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "204": {
+            "description": "The command recorded nothing."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register Student",
+        "tags": [
+          "register_student"
+        ]
       }
     },
     "/students/{student_id}/course-subscriptions": {
