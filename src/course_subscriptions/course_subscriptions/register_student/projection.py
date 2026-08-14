@@ -229,6 +229,14 @@ def _no_command(entry: RegisterStudentEntry) -> None:
     """Discard the command — the default when no port is injected."""
 
 
+AlreadyAppliedPort = Callable[[BaseException], bool]
+
+
+def _no_already_applied(error: BaseException) -> bool:  # noqa: ARG001
+    """Treat nothing as already-applied — the default when no port is injected."""
+    return False
+
+
 def _causation_metadata(envelope: TaggedEvent[Decision]) -> dict[str, str]:
     """Derive the metadata naming this envelope as the direct cause."""
     metadata = {}
@@ -248,9 +256,11 @@ class RegisterStudentProjection(Projection[RegisterStudentView, TaggedEvent[Deci
         self,
         view: RegisterStudentView,
         command: CommandPort = _no_command,
+        already_applied: AlreadyAppliedPort = _no_already_applied,
     ) -> None:
         super().__init__(view=view)
         self._command = command
+        self._already_applied = already_applied
 
     def process_event(
         self,
@@ -284,11 +294,25 @@ class RegisterStudentProjection(Projection[RegisterStudentView, TaggedEvent[Deci
         try:
             with put_metadata_in_context(metadata):
                 self._command(entry)
-        except Exception:
-            # An escaping exception permanently kills the runner's
-            # processing thread, stalling every later event. Log and leave
-            # the entry behind for drain() to retry.
-            logger.exception("failed to register student %s", entry.student_id)
+        except Exception as error:
+            if self._already_applied(error):
+                # The command already landed in an earlier run; this call is
+                # drain() (or a redelivered trigger) hitting the command's own
+                # idempotency guard, not a failure. Nothing to log at
+                # exception level: the entry stays in the view, and the
+                # registration's own completion event — already in the
+                # store, just not yet tracked — will remove it once
+                # redelivered.
+                logger.info(
+                    "student %s already registered; leaving entry for its "
+                    "completion event to drain",
+                    entry.student_id,
+                )
+            else:
+                # An escaping exception permanently kills the runner's
+                # processing thread, stalling every later event. Log and
+                # leave the entry behind for drain() to retry.
+                logger.exception("failed to register student %s", entry.student_id)
 
     def drain(self) -> None:
         """Re-issue commands for entries left outstanding by an earlier crash."""
@@ -416,9 +440,27 @@ def create_runner(
             ),
         )
 
-    projection = RegisterStudentProjection(view=view, command=command)
+    def already_applied(error: BaseException) -> bool:
+        # `RegisterStudentSlice.execute()` raises this bare `ValueError` when
+        # the student is already registered — the string is a public
+        # contract, surfaced as `detail` by the HTTP routes.
+        return (
+            isinstance(error, ValueError) and str(error) == "student_already_registered"
+        )
+
+    projection = RegisterStudentProjection(
+        view=view,
+        command=command,
+        already_applied=already_applied,
+    )
     # Recover work orphaned by an earlier crash before the subscription
-    # resumes; those events are past max_tracking_id and will never be
-    # redelivered.
+    # resumes. Two windows land here: (a) the command never landed — that
+    # trigger event is past max_tracking_id and will never be redelivered, so
+    # this is the only recovery; (b) the command DID land but its completion
+    # event was never tracked — that event is still in the store and WILL be
+    # redelivered once the subscription opens, draining the entry on its
+    # own. drain()'s retry in case (b) is redundant but harmless: it hits
+    # RegisterStudentSlice's own idempotency guard, which `already_applied`
+    # recognizes so it is logged as such rather than as a failure.
     projection.drain()
     return RegisterStudentRunner(view=view, app=app, projection=projection)

@@ -1,6 +1,8 @@
 # Copyright 2026 Moritz E. Beber
 """Test the Register Student automation's projection."""
 
+import logging
+
 import pytest
 from eventsourcing.domain import TaggedEvent, get_metadata_from_context
 from eventsourcing.persistence import Tracking
@@ -36,6 +38,24 @@ class _Failing:
     def __call__(self, _entry: RegisterStudentEntry) -> None:
         msg = "boom"
         raise ValueError(msg)
+
+
+class _AlreadyRegistered:
+    """
+    Command port that raises exactly what `RegisterStudentSlice` raises.
+
+    Simulates window (b): a run whose command already landed, re-fired by
+    `drain()` against the student's own idempotency guard.
+    """
+
+    def __call__(self, _entry: RegisterStudentEntry) -> None:
+        msg = "student_already_registered"
+        raise ValueError(msg)
+
+
+def _already_registered(error: BaseException) -> bool:
+    """Recognize `RegisterStudentSlice`'s own already-registered guard."""
+    return isinstance(error, ValueError) and str(error) == "student_already_registered"
 
 
 @pytest.fixture
@@ -188,3 +208,41 @@ def test_drain_is_a_no_op_on_a_clean_view(recorder: _Recorder) -> None:
     projection.drain()
 
     assert recorder.calls == []
+
+
+def test_drain_does_not_log_a_failure_for_an_already_applied_entry(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """
+    Window (b): the command already landed; `drain()` must not misreport it.
+
+    An earlier run's command succeeded and its completion event is already
+    in the store, but the crash happened before that event was tracked. The
+    entry survives at the trigger's position. `drain()` re-fires it, hits
+    `RegisterStudentSlice`'s own already-registered guard, and — because
+    `already_applied` recognizes that error — must log it at most at info
+    level, not as an exception. The entry itself stays in the view; only the
+    completion event, once redelivered, drains it (proven separately by
+    `test_emitted_event_drains_the_entry`).
+    """
+    view = POPORegisterStudentView()
+    view.add_entry(
+        RegisterStudentEntry(
+            student_id=_STUDENT_ID,
+            name="Anna Müller",
+            course_limit=2,
+        ),
+        Tracking("upstream", 1),
+    )
+    projection = RegisterStudentProjection(
+        view=view,
+        command=_AlreadyRegistered(),
+        already_applied=_already_registered,
+    )
+
+    with caplog.at_level(logging.INFO):
+        projection.drain()
+
+    failures = [r for r in caplog.records if r.levelno >= logging.ERROR]
+    assert failures == []
+    assert len(view.get_entries()) == 1
