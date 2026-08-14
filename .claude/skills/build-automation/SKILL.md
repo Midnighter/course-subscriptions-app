@@ -379,6 +379,14 @@ def _no_command(entry: {EntryName}) -> None:
     """Discard the command — the default when no port is injected."""
 
 
+AlreadyAppliedPort = Callable[[BaseException], bool]
+
+
+def _no_already_applied(error: BaseException) -> bool:  # noqa: ARG001
+    """Treat nothing as already-applied — the default when no port is injected."""
+    return False
+
+
 class {SliceName}Projection(
     Projection[{SliceName}View, TaggedEvent[Decision]],
 ):
@@ -391,9 +399,11 @@ class {SliceName}Projection(
         self,
         view: {SliceName}View,
         command: CommandPort = _no_command,
+        already_applied: AlreadyAppliedPort = _no_already_applied,
     ) -> None:
         super().__init__(view=view)
         self._command = command
+        self._already_applied = already_applied
 ```
 
 The command is **injected, not reached for**. A `Projection` receives only its view,
@@ -401,6 +411,13 @@ never the application, so it has no path to the write side on its own — and it
 not: injection is what makes the projection testable with no app, no runner, and no
 background thread. `create_runner()` (Step 5) closes the port over the shared
 application.
+
+**`already_applied` is a second, narrower port**, for a domain that raises its own
+idempotency guard when a command is re-issued against work it has already done (Step 4a
+describes exactly when that happens). It answers one question — "does this exception mean
+the command already succeeded?" — and its default answers "no" for everything, so a model
+with no such guard is unaffected. Inject it the same way as `command`: `create_runner()`
+closes it over the concrete exception the domain's command slice raises.
 
 ### process_event
 
@@ -448,10 +465,19 @@ def _causation_metadata(envelope: TaggedEvent[Decision]) -> dict[str, str]:
         try:
             with put_metadata_in_context(metadata):
                 self._command(entry)
-        except Exception:
-            # An escaping exception permanently kills the runner's processing
-            # thread, stalling every later event. Log and leave the entry behind.
-            logger.exception("failed to ... for %s", entry.entity_id)
+        except Exception as error:
+            if self._already_applied(error):
+                # The command already landed in an earlier run; this call is
+                # drain() (or a redelivered trigger) hitting the command's own
+                # idempotency guard, not a failure. Leave the entry — its own
+                # completion event, already in the store, drains it once
+                # redelivered (Step 4a).
+                logger.info("... already applied for %s", entry.entity_id)
+            else:
+                # An escaping exception permanently kills the runner's
+                # processing thread, stalling every later event. Log and
+                # leave the entry behind.
+                logger.exception("failed to ... for %s", entry.entity_id)
 ```
 
 `_causation_metadata` is a module-level function, not a method — it needs nothing from
@@ -488,11 +514,15 @@ design; nothing further is needed to get it.
 
 Two points specific to automations:
 
-- **`_fire`'s `except` stays exactly as it is.** The no-swallow rule for spans governs
-  the span around `process_event`, which must re-raise so the supervisor sees the
-  thread die. `_fire`'s guard is the deliberate exception to that: it is narrowly
-  scoped to the command port, and the lingering ledger entry *is* the signal. Record
-  the exception on the current span before logging it — do not widen the guard, and do
+- **`_fire`'s `except` gains one branch, not a new guard.** The no-swallow rule for
+  spans governs the span around `process_event`, which must re-raise so the supervisor
+  sees the thread die. `_fire`'s broad catch is the deliberate exception to that, and it
+  stays exactly as broad: it is narrowly scoped to the command port, and the lingering
+  ledger entry *is* the signal — except when `already_applied(error)` says the command
+  already succeeded. Then there is nothing to signal: log at `info`, not `exception`,
+  and skip the traceback — the entry survives in the view either way, and it is the
+  command's own completion event, not this log line, that drains it (Step 4a). Record a
+  genuine failure on the current span before logging it — do not widen the guard, and do
   not let the span's own error handling suppress what `_fire` already handled.
 - **`drain()` fires with no envelope**, so those commands start a fresh trace. Entries
   orphaned by a crash link to producer traces that may already be outside the
@@ -509,10 +539,21 @@ it is the failure mode most easily missed.
 resumes at `gt=tracking_recorder.max_tracking_id(...)`, strictly **after** the last
 recorded position. So once `add_entry` succeeds, that trigger event is permanently
 consumed. If the command then fails, the guard swallows it, the loop moves on — and
-nothing will ever revisit that entry. It sits outstanding forever.
+nothing will ever revisit that entry. It sits outstanding forever. Call this the
+**never-landed** case.
 
-Reversing the order does not help; it just trades a stuck entry for a lost command.
-Two mechanisms are needed, and they cover different windows:
+A second case leaves an entry outstanding at startup too, and looks identical from the
+view alone, but is not stuck: the command actually **succeeded** — its emitted event is
+already in the store — and the crash landed in the gap between that success and
+`process_event` running the branch that calls `remove_entry` for it. Call this the
+**already-applied** case. That emitted event is still ahead of `max_tracking_id`, so once
+the subscription opens it *will* be redelivered and drain the entry exactly as it would
+after any other success; `drain()` does not need to rescue it. Racing to re-fire the
+command before that redelivery arrives only reaches the command's own idempotency guard —
+which is not a failure, and Step 3's `already_applied` port is what tells `_fire` so.
+
+Reversing the order does not help the never-landed case; it just trades a stuck entry for
+a lost command. Two mechanisms are needed, and they cover different windows:
 
 ### 4a. `drain()` — always implement this
 
@@ -664,6 +705,15 @@ def create_runner(
     def command(entry: {EntryName}) -> None:
         app.do({CommandSliceName}(...))
 
+    # Recognizes the command's own idempotency guard — match whatever
+    # exception and message {CommandSliceName}Slice actually raises for work
+    # it has already done. Omit this closure and the `already_applied=`
+    # argument below when the command has no such guard; `_no_already_applied`
+    # is the default (Step 3), and every command exception is then logged as
+    # a failure exactly as before the already-applied case (Step 4a) existed.
+    def already_applied(error: BaseException) -> bool:
+        return isinstance(error, ValueError) and str(error) == "..."
+
     # `failure` and the `failure=` argument below are BOTH omitted when the
     # model defines no failure event; `_no_failure` is the default (Step 4b).
     def failure(entry: {EntryName}, reason: str) -> None:
@@ -672,10 +722,17 @@ def create_runner(
     projection = {SliceName}Projection(
         view=view,
         command=command,
+        already_applied=already_applied,
         failure=failure,
     )
-    # Recover work orphaned by an earlier crash before the subscription resumes;
-    # those events are past max_tracking_id and will never be redelivered.
+    # Recover work orphaned by an earlier crash before the subscription
+    # resumes. The never-landed case (Step 4a) needs this: that trigger event
+    # is past max_tracking_id and will never be redelivered. The
+    # already-applied case does not — its emitted event is still ahead of
+    # max_tracking_id and will be redelivered once the subscription opens,
+    # draining the entry on its own — but drain() retries it anyway; that
+    # retry is harmless only because `already_applied` above keeps `_fire`
+    # from logging it as a failure.
     projection.drain()
     return {SliceName}Runner(view=view, app=app, projection=projection)
 ```
@@ -1019,6 +1076,61 @@ This is also the test that proves a **supervisor restart** recovers correctly: t
 restart path is precisely "call `create_runner(app, view)` again over the same view",
 and the fresh runner resumes at `max_tracking_id` rather than replaying from zero.
 
+The test above is the never-landed case. Write a second one for the already-applied case
+(Step 4a) — it needs `import logging` alongside `pytest` for `caplog`:
+
+```python
+def test_drain_retries_an_already_applied_entry_without_failing(
+    dcb_app: {ProjectName}App,
+    view: {SliceName}View,
+    entity_id: str,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """drain()'s retry of an already-applied entry is not logged as a failure."""
+    position = dcb_app.events.append(
+        events=[
+            TaggedEvent(
+                decision={TriggerEventName}(entity_id=entity_id, field="value"),
+                tags=[f"{{entity_kind}}:{entity_id}"],
+            ),
+        ],
+    )
+    # A crashed run: entry and tracking committed at the trigger's position —
+    # but this time the command DID succeed. Its emitted event is already in
+    # the store, just never tracked, because the crash landed before
+    # process_event's {EmittedEventName} branch ran.
+    view.add_entry(
+        {EntryName}(entity_id=entity_id, field="value"),
+        Tracking(dcb_app.context_name, position),
+    )
+    dcb_app.events.append(
+        events=[
+            TaggedEvent(
+                decision={EmittedEventName}(entity_id=entity_id),
+                tags=[f"{{entity_kind}}:{entity_id}"],
+            ),
+        ],
+    )
+
+    # drain() re-fires the command and hits its own idempotency guard; the
+    # already_applied port (Step 3) is what keeps that from being logged as a
+    # failure. The emitted event appended above — not drain() — is what
+    # actually removes the entry, once the subscription redelivers it.
+    with caplog.at_level(logging.ERROR), create_runner(dcb_app, view):
+        view.wait(
+            context_name=dcb_app.context_name,
+            notification_id=position + 1,
+            timeout=5,
+        )
+        assert view.get_entries() == []
+    assert caplog.records == []
+```
+
+This test only proves something if `{CommandSliceName}Slice` actually raises on a
+repeat, which any command with a consistency boundary and a "this already happened"
+check does. A command with no such guard has no already-applied case to distinguish —
+omit the `already_applied` port (Step 3) and this test along with it.
+
 **Seeding into a live runner's view raises `IntegrityError`.** The subscription
 processes that same event and calls `add_entry` with the same `Tracking`, so
 whichever write loses the race trips `_assert_tracking_uniqueness` — on the
@@ -1102,7 +1214,8 @@ The command slice under
 - [ ] Integration tests seed raw `TaggedEvent`s through the **shared** application, and `view.wait(context_name=..., notification_id=position + 1, ...)` rather than sleeping
 - [ ] The seeded event carries every tag the command slice's boundary selects on
 - [ ] The `drain()` recovery test builds its own view and app, consuming the position **before** any runner is constructed
+- [ ] If the command has an idempotency guard, `already_applied` is injected in `create_runner()` and a test proves `drain()`'s retry of an already-applied entry logs no failure (`caplog` at `ERROR`) and the entry still drains via its emitted event's redelivery
 - [ ] No `routes.py` created (automations are not exposed via HTTP) — `/healthz` is the one exception, and it is operational, not this slice's surface
 - [ ] `/healthz` exists in `create_app()` and its 503 path has an integration test; added here if this slice registered the project's first supervisor, left untouched if an earlier one did
 - [ ] Step 0 ran: `command.py`, `telemetry.py`, `application.py`, `main.py`, `projection.py` and `tests/unit/test_projection.py` all exist, and anything created there was committed as a `chore:` before this slice
-- [ ] `process_event`'s `match` is wrapped in one `consumer_span(envelope, ...)` that re-raises, and `_fire`'s narrow guard is left untouched
+- [ ] `process_event`'s `match` is wrapped in one `consumer_span(envelope, ...)` that re-raises, and `_fire`'s broad guard stays narrowly scoped to the command port — its already-applied branch logs at `info`, everything else still at `exception`
