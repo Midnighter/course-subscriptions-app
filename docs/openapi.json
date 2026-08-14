@@ -129,7 +129,7 @@
         "type": "object"
       },
       "RegisterStudentRequest": {
-        "description": "Request body for the Register Student command.",
+        "description": "Request body for the External Register Student command.",
         "properties": {
           "course_limit": {
             "title": "Course Limit",
@@ -458,8 +458,8 @@
     },
     "/student-registrations": {
       "post": {
-        "description": "Register a new student with a limit on concurrent course subscriptions.",
-        "operationId": "register_student",
+        "description": "Record an external student registration, triggering the automation.",
+        "operationId": "external_register_student",
         "requestBody": {
           "content": {
             "application/json": {
@@ -495,9 +495,9 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Register Student",
+        "summary": "External Register Student",
         "tags": [
-          "register_student"
+          "external_register_student"
         ]
       }
     },

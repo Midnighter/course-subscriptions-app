@@ -17,11 +17,11 @@ from course_subscriptions.course_subscriptions.change_course_capacity import (
 from course_subscriptions.course_subscriptions.course_catalogue import (
     routes as course_catalogue_routes,
 )
+from course_subscriptions.course_subscriptions.external_register_student import (
+    routes as external_register_student_routes,
+)
 from course_subscriptions.course_subscriptions.register_course import (
     routes as register_course_routes,
-)
-from course_subscriptions.course_subscriptions.register_student import (
-    routes as register_student_routes,
 )
 from course_subscriptions.course_subscriptions.register_student.projection import (
     create_runner as create_register_student_runner,
@@ -92,7 +92,7 @@ def create_app() -> FastAPI:
     app.include_router(unsubscribe_student_routes.router)
     app.include_router(change_course_capacity_routes.router)
     app.include_router(register_course_routes.router)
-    app.include_router(register_student_routes.router)
+    app.include_router(external_register_student_routes.router)
     app.include_router(course_catalogue_routes.router)
 
     @app.get("/healthz")
