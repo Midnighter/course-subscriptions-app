@@ -12,15 +12,24 @@ then reconfirms the same invariants asserted by the pytest integration suite
 under tests/integration/course_subscriptions/, including a capacity change.
 Exits non-zero and prints the mismatch if the live server disagrees with any
 step's expectation.
+
+Every view is read with read-your-writes: the position reported by the last
+successful command is sent as X-Position-AtLeast, and a 425 response is retried
+every POLL_INTERVAL seconds until the view has caught up.
 """
 
 from __future__ import annotations
 
 import sys
+import time
 
 import httpx2
 
 BASE_URL = "http://localhost:8000"
+
+POSITION_AT_LEAST_HEADER = "X-Position-AtLeast"
+POLL_INTERVAL = 0.5
+POLL_TIMEOUT = 30.0
 
 COURSE_A = "EM-2026-101"
 COURSE_B = "EM-2026-102"
@@ -31,6 +40,7 @@ STUDENT_2 = "STU-2026-0002"
 STUDENT_3 = "STU-2026-0003"
 
 _FAILURES: list[str] = []
+_LAST_POSITION: int | None = None
 
 
 def expect(
@@ -41,8 +51,12 @@ def expect(
     label: str,
 ) -> None:
     """Assert a response's status (and optionally detail) and report the result."""
+    global _LAST_POSITION  # noqa: PLW0603
+
     body = response.json() if response.content else None
     actual_detail = body.get("detail") if isinstance(body, dict) else None
+    if isinstance(body, dict) and isinstance(body.get("position"), int):
+        _LAST_POSITION = body["position"]
     ok = response.status_code == status and (detail is None or actual_detail == detail)
     if ok:
         print(f"OK   {label}")
@@ -123,6 +137,33 @@ def change_capacity(
     )
 
 
+def read_view(client: httpx2.Client, url: str) -> httpx2.Response:
+    """
+    Read a view, waiting until it reflects the last command's position.
+
+    Raises:
+        TimeoutError: If the view stays behind for longer than POLL_TIMEOUT.
+
+    """
+    headers = (
+        {}
+        if _LAST_POSITION is None
+        else {POSITION_AT_LEAST_HEADER: str(_LAST_POSITION)}
+    )
+    deadline = time.monotonic() + POLL_TIMEOUT
+    while True:
+        response = client.get(url, headers=headers)
+        if response.status_code != 425:
+            return response
+        if time.monotonic() >= deadline:
+            message = (
+                f"{url} did not reach position {_LAST_POSITION} "
+                f"within {POLL_TIMEOUT} seconds"
+            )
+            raise TimeoutError(message)
+        time.sleep(POLL_INTERVAL)
+
+
 def main() -> int:
     """Run the scenario against BASE_URL and report a pass/fail summary."""
     with httpx2.Client(base_url=BASE_URL) as client:
@@ -161,7 +202,7 @@ def main() -> int:
         )
 
         # course_catalogue: initial listing
-        catalogue = client.get("/course-catalogue").json()["courses"]
+        catalogue = read_view(client, "/course-catalogue").json()["courses"]
         by_id = {entry["course_id"]: entry for entry in catalogue}
         assert by_id[COURSE_A]["capacity"] == 10  # noqa: S101
         assert by_id[COURSE_A]["number_of_subscriptions"] == 0  # noqa: S101
@@ -201,7 +242,7 @@ def main() -> int:
             label="student 2 subscribes to course A",
         )
 
-        catalogue = client.get("/course-catalogue").json()["courses"]
+        catalogue = read_view(client, "/course-catalogue").json()["courses"]
         by_id = {entry["course_id"]: entry for entry in catalogue}
         assert by_id[COURSE_A]["number_of_subscriptions"] == 2  # noqa: S101
         print("OK   course A now has 2 subscriptions")
@@ -273,13 +314,16 @@ def main() -> int:
             (STUDENT_2, [COURSE_A]),
             (STUDENT_3, [COURSE_B]),
         ):
-            body = client.get(f"/students/{student_id}/course-subscriptions").json()
+            body = read_view(
+                client,
+                f"/students/{student_id}/course-subscriptions",
+            ).json()
             assert body["subscription_count"] == len(expected_courses)  # noqa: S101
             assert body["courses"] == expected_courses  # noqa: S101
             print(f"OK   {student_id} subscriptions == {expected_courses}")
 
         # course_catalogue: final state after the capacity change and re-subscription
-        catalogue = client.get("/course-catalogue").json()["courses"]
+        catalogue = read_view(client, "/course-catalogue").json()["courses"]
         by_id = {entry["course_id"]: entry for entry in catalogue}
         assert by_id[COURSE_A]["capacity"] == 2  # noqa: S101
         assert by_id[COURSE_A]["number_of_subscriptions"] == 2  # noqa: S101
@@ -312,4 +356,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except TimeoutError as error:
+        print(f"FAIL {error}")
+        sys.exit(1)
