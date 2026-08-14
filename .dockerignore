@@ -1,0 +1,25 @@
+# Allowlist, not a denylist. Both Dockerfiles copy exactly the paths
+# re-included below, and the compose stack bind-mounts the working tree over
+# /app at run time anyway, so nothing else has any business in the build
+# context.
+#
+# The allowlist is what keeps the build working: `projections/` and
+# `eventstore/` are bind mounts the service containers own, and Postgres
+# creates `projections/pgdata` as uid 70, mode 0700. A denylist would send the
+# build context reader in there and fail with "permission denied" the moment
+# anyone added a new mount and forgot to list it here.
+#
+# Adding a COPY to a Dockerfile means adding its path here too.
+
+*
+
+!pyproject.toml
+!README.md
+!requirements.txt
+!requirements/
+!src/
+
+# Never ship build artefacts or caches, even from an allowed path.
+**/__pycache__/
+**/*.py[cod]
+src/*/_version.py
