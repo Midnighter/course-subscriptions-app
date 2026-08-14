@@ -44,7 +44,9 @@ processed event.
 The last arrow is the point. Events the automation emits **come back through the
 same subscription**, and that is what drains the entry. The view is simultaneously
 the automation's input state and its ledger of unfinished work — but only if
-something actually reads that ledger back. See Step 4.
+something actually reads that ledger back. See Step 4, which also covers the entries
+that arrow will never reach: a command answering "already done" emits nothing, so
+nothing comes back around for it.
 
 That loop only closes when the automation subscribes to the *same* application
 the command writes through. A runner that constructs its own `DcbApplication`
@@ -314,6 +316,18 @@ class {SliceName}View(TrackingRecorder):
         """
 
     @abstractmethod
+    def discard_entry(self, entity_id: str) -> None:
+        """Drop the entry for `entity_id` without recording a position.
+
+        The same deletion as `remove_entry`, minus the tracking, because
+        neither caller has a position to record: on the trigger path
+        `add_entry` already wrote this event's, and re-inserting it would
+        raise; `drain()` is not processing an event at all.
+
+        Must be a no-op when no entry exists.
+        """
+
+    @abstractmethod
     def get_entries(self) -> list[{EntryName}]:
         """Return copies of every outstanding entry."""
 
@@ -343,6 +357,11 @@ class POPO{SliceName}View(POPOTrackingRecorder, {SliceName}View):
             self._entries.pop(entity_id, None)
             self._insert_tracking(tracking)
 
+    def discard_entry(self, entity_id: str) -> None:
+        """Drop the entry for `entity_id` without recording a position."""
+        with self._database_lock:
+            self._entries.pop(entity_id, None)
+
     def get_entries(self) -> list[{EntryName}]:
         """Return copies of every outstanding entry."""
         with self._database_lock:
@@ -361,8 +380,13 @@ Notes on the template:
   replaces the outstanding entry rather than queueing a duplicate command. If the model
   genuinely allows concurrent work items per entity, key on whatever the model makes
   unique instead — but then `remove_entry` needs that key too, not `entity_id`.
-- **`count_attempt` does not take a `tracking`.** It is called from `drain()` and the
-  retry path, which are not processing a new event, so there is no position to record.
+- **`count_attempt` and `discard_entry` do not take a `tracking`.** `count_attempt` is
+  called from `drain()` and the retry path, which are not processing a new event, so
+  there is no position to record. `discard_entry` is called from `_fire` (Step 3), which
+  reaches it on *both* paths — and on the trigger path `add_entry` has already written
+  that event's position, so passing it again would raise `IntegrityError`. Give the two
+  deleting methods one shared private helper on the Postgres implementation, or
+  `remove_entry` and `discard_entry` will drift apart.
 - **`get_entries()` returns copies** (`replace(entry)`), or callers mutate view state
   through the returned dataclasses.
 
@@ -486,11 +510,12 @@ def _causation_metadata(entry: {EntryName}) -> dict[str, str]:
                 self._command(entry)
         except Exception as error:
             if self._already_applied(error):
-                # The command already landed in an earlier run; this call is
-                # drain() (or a redelivered trigger) hitting the command's own
-                # idempotency guard, not a failure. Leave the entry — its own
-                # completion event, already in the store, drains it once
-                # redelivered (Step 4a).
+                # Not a failure: the command's own idempotency guard answered,
+                # and it only answers this way after replaying the entity's
+                # history, so it is proof the work landed — the same proof the
+                # completion event would have carried. Take it as the
+                # completion signal and drop the entry here (Step 4).
+                self.view.discard_entry(entry.entity_id)
                 logger.info("... already applied for %s", entry.entity_id)
             else:
                 # An escaping exception permanently kills the runner's
@@ -545,10 +570,11 @@ Two points specific to automations:
   stays exactly as broad: it is narrowly scoped to the command port, and the lingering
   ledger entry *is* the signal — except when `already_applied(error)` says the command
   already succeeded. Then there is nothing to signal: log at `info`, not `exception`,
-  and skip the traceback — the entry survives in the view either way, and it is the
-  command's own completion event, not this log line, that drains it (Step 4a). Record a
-  genuine failure on the current span before logging it — do not widen the guard, and do
-  not let the span's own error handling suppress what `_fire` already handled.
+  skip the traceback, and **discard the entry** — that guard is the completion signal,
+  so leaving the entry behind would report outstanding work that is already done
+  (Step 4). Record a genuine failure on the current span before logging it — do not
+  widen the guard, and do not let the span's own error handling suppress what `_fire`
+  already handled.
 - **`drain()` fires with no envelope**, so those commands start a fresh *trace* — the
   entry stores the causal ids, not a `traceparent`, and a trace orphaned by a crash may
   already be outside the retention window anyway. Expected, not a bug to code around.
@@ -569,15 +595,34 @@ consumed. If the command then fails, the guard swallows it, the loop moves on �
 nothing will ever revisit that entry. It sits outstanding forever. Call this the
 **never-landed** case.
 
-A second case leaves an entry outstanding at startup too, and looks identical from the
-view alone, but is not stuck: the command actually **succeeded** — its emitted event is
-already in the store — and the crash landed in the gap between that success and
-`process_event` running the branch that calls `remove_entry` for it. Call this the
-**already-applied** case. That emitted event is still ahead of `max_tracking_id`, so once
-the subscription opens it *will* be redelivered and drain the entry exactly as it would
-after any other success; `drain()` does not need to rescue it. Racing to re-fire the
-command before that redelivery arrives only reaches the command's own idempotency guard —
-which is not a failure, and Step 3's `already_applied` port is what tells `_fire` so.
+A second case leaves an entry outstanding too, and looks identical from the view alone,
+but is not stuck: the command actually **succeeded** — its emitted event is already in
+the store — and the crash landed in the gap between that success and `process_event`
+running the branch that calls `remove_entry` for it. Call this the **already-applied,
+pending** case. That emitted event is still ahead of `max_tracking_id`, so once the
+subscription opens it *will* be redelivered and drain the entry exactly as it would after
+any other success.
+
+A third case is the one most easily missed, because the two above are both about
+crashes and this one is about ordinary traffic. If the trigger event is recorded
+**unconditionally** — the external route writes down every submission and lets the
+automation decide — then a resubmission for an entity whose work completed long ago
+arrives as a perfectly ordinary trigger. `process_event` takes an entry for it (there is
+no way to know it is a duplicate without asking the command), the command refuses, and
+**no redelivery is coming**: that entity's completion event was tracked when the first
+submission landed, so it sits *behind* `max_tracking_id` forever. Call this the
+**already-applied, never-arriving** case.
+
+The two already-applied cases are indistinguishable from inside `_fire`, and only one of
+them self-heals — so `_fire` must not wait for the completion event in either. Step 3's
+`already_applied` port is what makes that safe: a command's idempotency guard only
+answers after replaying the entity's own history, so a `True` answer carries the same
+proof the completion event would have. `_fire` therefore treats it as the completion
+signal and calls `discard_entry`. In the pending case that merely beats the redelivery
+to it (`remove_entry` is then a documented no-op); in the never-arriving case it is the
+only thing that ever clears the row. Leaving the entry instead does not just leak a row:
+it destroys the ledger's contract that **a lingering entry means the command did not
+land**, and every genuinely stuck entry becomes indistinguishable from it.
 
 Reversing the order does not help the never-landed case; it just trades a stuck entry for
 a lost command. Two mechanisms are needed, and they cover different windows:
@@ -747,7 +792,8 @@ def create_runner(
     # it has already done. Omit this closure and the `already_applied=`
     # argument below when the command has no such guard; `_no_already_applied`
     # is the default (Step 3), and every command exception is then logged as
-    # a failure exactly as before the already-applied case (Step 4a) existed.
+    # a failure exactly as before the already-applied case (Step 4) existed —
+    # and no entry is ever discarded on the strength of a guess.
     def already_applied(error: BaseException) -> bool:
         return isinstance(error, ValueError) and str(error) == "..."
 
@@ -762,14 +808,15 @@ def create_runner(
         already_applied=already_applied,
         failure=failure,
     )
-    # Recover work orphaned by an earlier crash before the subscription
-    # resumes. The never-landed case (Step 4a) needs this: that trigger event
-    # is past max_tracking_id and will never be redelivered. The
-    # already-applied case does not — its emitted event is still ahead of
-    # max_tracking_id and will be redelivered once the subscription opens,
-    # draining the entry on its own — but drain() retries it anyway; that
-    # retry is harmless only because `already_applied` above keeps `_fire`
-    # from logging it as a failure.
+    # Recover work left outstanding before the subscription resumes. The
+    # never-landed case (Step 4) needs this: that trigger event is past
+    # max_tracking_id and will never be redelivered. The already-applied,
+    # pending case does not — its emitted event is still ahead of
+    # max_tracking_id and would drain the entry on its own — but drain()
+    # retries it anyway, and `already_applied` above turns that into the
+    # discard rather than a logged failure. For an already-applied entry whose
+    # completion event is *behind* max_tracking_id, that same discard is the
+    # only thing that ever clears it.
     projection.drain()
     return {SliceName}Runner(view=view, app=app, projection=projection)
 ```
@@ -1152,8 +1199,9 @@ def test_drain_retries_an_already_applied_entry_without_failing(
 
     # drain() re-fires the command and hits its own idempotency guard; the
     # already_applied port (Step 3) is what keeps that from being logged as a
-    # failure. The emitted event appended above — not drain() — is what
-    # actually removes the entry, once the subscription redelivers it.
+    # failure and discards the entry on the spot. The emitted event appended
+    # above would remove it too, once redelivered — this is the one case where
+    # both paths work, which is why the never-arriving case needs its own test.
     with caplog.at_level(logging.ERROR), create_runner(dcb_app, view):
         view.wait(
             context_name=dcb_app.context_name,
@@ -1168,6 +1216,16 @@ This test only proves something if `{CommandSliceName}Slice` actually raises on 
 repeat, which any command with a consistency boundary and a "this already happened"
 check does. A command with no such guard has no already-applied case to distinguish —
 omit the `already_applied` port (Step 3) and this test along with it.
+
+**Add a second test for the never-arriving case** whenever the trigger event is recorded
+unconditionally. Seed a trigger, let it complete, then seed a *second* trigger for the
+same entity and assert the ledger ends up empty and the command emitted nothing the
+second time. It is the discard in `_fire`, not a redelivery, that has to clear it — the
+test above cannot tell the two apart, because there both paths lead to an empty view.
+Synchronise on a **later** event's position, not the duplicate's own: `add_entry` writes
+the duplicate's position *before* the command runs, so waiting on it can observe the
+entry in the window before the discard. Appending one unrelated in-topic event as a
+barrier is enough — events are processed in order.
 
 **Seeding into a live runner's view raises `IntegrityError`.** The subscription
 processes that same event and calls `add_entry` with the same `Tracking`, so
@@ -1246,6 +1304,7 @@ The command slice under
 - [ ] Entries carry `attempts`; firing stops past `MAX_ATTEMPTS` and the entry stays parked
 - [ ] `get_entries()` takes no argument and returns copies, so callers cannot mutate view state
 - [ ] `add_entry` / `remove_entry` write the entry and its `Tracking` in one atomic step
+- [ ] `discard_entry` and `count_attempt` take **no** `Tracking`, and the two deleting methods share one private helper on the Postgres view
 - [ ] `view_class` subclasses the recorder matching the configured `PERSISTENCE_MODULE` (POPO unless durability was asked for)
 - [ ] If the model has a failure event: it is in `topics`, injected as a separate optional port, its recording is itself guarded, and its slice's boundary can never match
 - [ ] If the model has **no** failure event: no failure port, no third topic, no `_retry` branch — `drain()` alone is the recovery path
@@ -1254,7 +1313,8 @@ The command slice under
 - [ ] Integration tests seed raw `TaggedEvent`s through the **shared** application, and `view.wait(context_name=..., notification_id=position + 1, ...)` rather than sleeping
 - [ ] The seeded event carries every tag the command slice's boundary selects on
 - [ ] The `drain()` recovery test builds its own view and app, consuming the position **before** any runner is constructed
-- [ ] If the command has an idempotency guard, `already_applied` is injected in `create_runner()` and a test proves `drain()`'s retry of an already-applied entry logs no failure (`caplog` at `ERROR`) and the entry still drains via its emitted event's redelivery
+- [ ] If the command has an idempotency guard, `already_applied` is injected in `create_runner()` and a test proves `drain()`'s retry of an already-applied entry logs no failure (`caplog` at `ERROR`) and leaves no entry behind — `_fire` discards it rather than waiting for the emitted event
+- [ ] If the trigger event is recorded unconditionally, a test proves a duplicate trigger for completed work leaves the ledger empty, synchronised on a later event's position than the duplicate's own
 - [ ] No `routes.py` created (automations are not exposed via HTTP) — `/healthz` is the one exception, and it is operational, not this slice's surface
 - [ ] `/healthz` exists in `create_app()` and its 503 path has an integration test; added here if this slice registered the project's first supervisor, left untouched if an earlier one did
 - [ ] Step 0 ran: `command.py`, `metadata.py`, `telemetry.py`, `application.py`, `main.py`, `projection.py` and `tests/unit/test_projection.py` all exist, and anything created there was committed as a `chore:` before this slice

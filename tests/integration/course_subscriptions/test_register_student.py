@@ -87,6 +87,60 @@ def test_external_registration_triggers_register_student(
     assert view.get_entries() == []
 
 
+def test_a_duplicate_registration_leaves_no_outstanding_entry(
+    dcb_app: CourseSubscriptionsApp,
+    view: RegisterStudentView,
+) -> None:
+    """
+    A resubmission for a registered student clears its own ledger entry.
+
+    `ExternalStudentRegistered` is recorded unconditionally, so this arrives
+    as a fresh trigger and takes an entry — but the command refuses, and the
+    `StudentRegistered` that would drain it was tracked when the first
+    registration landed and is never redelivered. Without the already-applied
+    discard the entry sits outstanding forever, and every genuinely stuck
+    entry becomes indistinguishable from it.
+    """
+    _, first_position = _seed_external_registration(dcb_app, _STUDENT_ID)
+    view.wait(
+        context_name=dcb_app.context_name,
+        notification_id=first_position + 1,
+        timeout=5,
+    )
+
+    _seed_external_registration(dcb_app, _STUDENT_ID, correlation_id="corr-dup")
+    # A barrier, not a fixture of the scenario: the duplicate advances
+    # tracking from `add_entry`, which runs *before* the command and so before
+    # the discard. Events are processed in order, so tracking reaching a later
+    # position is what proves the duplicate was handled to completion.
+    barrier_position = dcb_app.events.append(
+        events=[
+            TaggedEvent(
+                decision=StudentRegistered(
+                    student_id=_OTHER_STUDENT_ID,
+                    name="Bo Nielsen",
+                    course_limit=2,
+                ),
+                tags=[f"student:{_OTHER_STUDENT_ID}"],
+            ),
+        ],
+    )
+    view.wait(
+        context_name=dcb_app.context_name,
+        notification_id=barrier_position,
+        timeout=5,
+    )
+
+    registered = [
+        env
+        for env in dcb_app.events.read()
+        if isinstance(env.decision, StudentRegistered)
+        and env.decision.student_id == _STUDENT_ID
+    ]
+    assert len(registered) == 1
+    assert view.get_entries() == []
+
+
 def test_two_students_handled_independently(
     dcb_app: CourseSubscriptionsApp,
     view: RegisterStudentView,

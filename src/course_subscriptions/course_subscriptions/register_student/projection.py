@@ -33,6 +33,8 @@ from course_subscriptions.telemetry import consumer_span
 
 if TYPE_CHECKING:
     from eventsourcing.utils import EnvType
+    from psycopg import Cursor
+    from psycopg.rows import DictRow
 
     from course_subscriptions.application import CourseSubscriptionsApp
 
@@ -78,6 +80,19 @@ class RegisterStudentView(TrackingRecorder):
         """
 
     @abstractmethod
+    def discard_entry(self, student_id: str) -> None:
+        """
+        Drop the entry for `student_id` without recording a position.
+
+        The same deletion as `remove_entry`, minus the tracking, because
+        neither caller has a position to record: on the trigger path
+        `add_entry` already wrote this event's, and re-inserting it would
+        raise; `drain()` is not processing an event at all.
+
+        Must be a no-op when no entry exists.
+        """
+
+    @abstractmethod
     def get_entries(self) -> list[RegisterStudentEntry]:
         """Return copies of every outstanding entry."""
 
@@ -114,6 +129,11 @@ class POPORegisterStudentView(POPOTrackingRecorder, RegisterStudentView):
             self._assert_tracking_uniqueness(tracking)
             self._entries.pop(student_id, None)
             self._insert_tracking(tracking)
+
+    def discard_entry(self, student_id: str) -> None:
+        """Drop the entry for `student_id` without recording a position."""
+        with self._database_lock:
+            self._entries.pop(student_id, None)
 
     def get_entries(self) -> list[RegisterStudentEntry]:
         """Return copies of every outstanding entry."""
@@ -199,15 +219,25 @@ class PostgresRegisterStudentView(PostgresTrackingRecorder, RegisterStudentView)
                 ),
             )
 
+    def _delete_entry(self, curs: Cursor[DictRow], student_id: str) -> None:
+        """Delete the entry for `student_id` on an already-open cursor."""
+        # A DELETE matching no row is already the no-op both callers require.
+        curs.execute(
+            SQL("DELETE FROM {0}.{1} WHERE student_id = %s").format(*self._table),
+            (student_id,),
+        )
+
     def remove_entry(self, student_id: str, tracking: Tracking) -> None:
         """Drop the entry for `student_id`, atomically with the tracking position."""
         with self.datastore.transaction(commit=True) as curs:
             self._insert_tracking(curs, tracking)
-            # A DELETE matching no row is already the required no-op.
-            curs.execute(
-                SQL("DELETE FROM {0}.{1} WHERE student_id = %s").format(*self._table),
-                (student_id,),
-            )
+            self._delete_entry(curs, student_id)
+
+    def discard_entry(self, student_id: str) -> None:
+        """Drop the entry for `student_id` without recording a position."""
+        # No tracking to record, for the reasons given on the abstract method.
+        with self.datastore.transaction(commit=True) as curs:
+            self._delete_entry(curs, student_id)
 
     def get_entries(self) -> list[RegisterStudentEntry]:
         """Return copies of every outstanding entry."""
@@ -342,16 +372,22 @@ class RegisterStudentProjection(Projection[RegisterStudentView, TaggedEvent[Deci
                 self._command(entry)
         except Exception as error:
             if self._already_applied(error):
-                # The command already landed in an earlier run; this call is
-                # drain() (or a redelivered trigger) hitting the command's own
-                # idempotency guard, not a failure. Nothing to log at
-                # exception level: the entry stays in the view, and the
-                # registration's own completion event — already in the
-                # store, just not yet tracked — will remove it once
-                # redelivered.
+                # Not a failure: the command's own idempotency guard answered,
+                # and it only answers this way after replaying the student's
+                # history, so it is proof the registration landed — the same
+                # proof the completion event would have carried. Take it as the
+                # completion signal and drop the entry here.
+                #
+                # Waiting for that event instead only works while it is still
+                # ahead of max_tracking_id, which holds for a crash between
+                # the command and its tracking, but not for a duplicate
+                # ExternalStudentRegistered: the emitted event was tracked long
+                # ago and is never redelivered, so the entry would linger
+                # forever, falsely signalling outstanding work.
+                self.view.discard_entry(entry.student_id)
                 logger.info(
-                    "student %s already registered; leaving entry for its "
-                    "completion event to drain",
+                    "student %s already registered; discarding the "
+                    "outstanding entry",
                     entry.student_id,
                 )
             else:
@@ -506,13 +542,16 @@ def create_runner(
         already_applied=already_applied,
     )
     # Recover work orphaned by an earlier crash before the subscription
-    # resumes. Two windows land here: (a) the command never landed — that
-    # trigger event is past max_tracking_id and will never be redelivered, so
-    # this is the only recovery; (b) the command DID land but its completion
-    # event was never tracked — that event is still in the store and WILL be
-    # redelivered once the subscription opens, draining the entry on its
-    # own. drain()'s retry in case (b) is redundant but harmless: it hits
-    # RegisterStudentSlice's own idempotency guard, which `already_applied`
-    # recognizes so it is logged as such rather than as a failure.
+    # resumes. Three windows land here, and they look identical from the view
+    # alone: (a) the command never landed — that trigger event is past
+    # max_tracking_id and will never be redelivered, so this is the only
+    # recovery; (b) the command DID land but its completion event was never
+    # tracked — that event is still in the store and would drain the entry on
+    # its own once the subscription opens; (c) the entry came from a duplicate
+    # trigger for a registration completed long ago, whose completion event is
+    # behind max_tracking_id and never comes back. In (b) and (c) the retry
+    # reaches RegisterStudentSlice's idempotency guard, and `already_applied`
+    # turns that into the discard — which is redundant in (b) but the only
+    # thing that ever clears (c).
     projection.drain()
     return RegisterStudentRunner(view=view, app=app, projection=projection)

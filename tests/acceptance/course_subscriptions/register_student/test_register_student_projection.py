@@ -44,8 +44,9 @@ class _AlreadyRegistered:
     """
     Command port that raises exactly what `RegisterStudentSlice` raises.
 
-    Simulates window (b): a run whose command already landed, re-fired by
-    `drain()` against the student's own idempotency guard.
+    Stands in for both windows where the registration already exists: a run
+    whose command landed before a crash and is re-fired by `drain()`, and a
+    duplicate `ExternalStudentRegistered` arriving long afterwards.
     """
 
     def __call__(self, _entry: RegisterStudentEntry) -> None:
@@ -279,9 +280,11 @@ def test_drain_does_not_log_a_failure_for_an_already_applied_entry(
     entry survives at the trigger's position. `drain()` re-fires it, hits
     `RegisterStudentSlice`'s own already-registered guard, and — because
     `already_applied` recognizes that error — must log it at most at info
-    level, not as an exception. The entry itself stays in the view; only the
-    completion event, once redelivered, drains it (proven separately by
-    `test_emitted_event_drains_the_entry`).
+    level, not as an exception, and drop the entry: that guard only answers
+    after replaying the student's history, so it is proof the work landed.
+    The completion event would drain the entry too, once redelivered, but
+    only in this window; `test_a_duplicate_trigger_leaves_no_entry` covers
+    the one where it never arrives.
     """
     view = POPORegisterStudentView()
     view.add_entry(
@@ -303,4 +306,29 @@ def test_drain_does_not_log_a_failure_for_an_already_applied_entry(
 
     failures = [r for r in caplog.records if r.levelno >= logging.ERROR]
     assert failures == []
-    assert len(view.get_entries()) == 1
+    assert view.get_entries() == []
+
+
+def test_a_duplicate_trigger_leaves_no_entry() -> None:
+    """
+    Window (c): a duplicate trigger for a registration completed long ago.
+
+    `ExternalStudentRegistered` is recorded unconditionally, so a resubmission
+    reaches the automation as a fresh trigger. It records an entry — there is
+    no way to know it is a duplicate without asking the command — the command
+    refuses, and nothing will ever drain that entry: the student's
+    `StudentRegistered` was tracked long ago and is never redelivered. The
+    already-applied guard has to be what clears it, or the ledger reports
+    outstanding work forever.
+    """
+    view = POPORegisterStudentView()
+    projection = RegisterStudentProjection(
+        view=view,
+        command=_AlreadyRegistered(),
+        already_applied=_already_registered,
+    )
+
+    projection.process_event(_trigger(correlation_id="corr-1"), Tracking("upstream", 1))
+
+    assert view.get_entries() == []
+    assert view.max_tracking_id("upstream") == 1
