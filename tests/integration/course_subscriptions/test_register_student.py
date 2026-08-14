@@ -83,6 +83,7 @@ def test_external_registration_triggers_register_student(
     assert emitted.decision.course_limit == 2
     assert emitted.metadata["causation_id"] == str(seed.uuid)
     assert emitted.metadata["correlation_id"] == "corr-1"
+    assert emitted.metadata["created_at"]
     assert view.get_entries() == []
 
 
@@ -110,27 +111,34 @@ def test_two_students_handled_independently(
 
 
 def test_drain_recovers_an_orphaned_entry() -> None:
-    """An entry left outstanding by a crash is re-fired on restart."""
+    """
+    An entry left outstanding by a crash is re-fired on restart, in its flow.
+
+    The trigger sits at `position`, which the crashed run already tracked, so
+    it is never redelivered — `drain()` is the only path back. The recovered
+    registration must still land in the flow that asked for it, which is what
+    the entry's stored causal ids are for.
+    """
     with CourseSubscriptionsApp() as dcb_app:
         view = create_view()
-        position = dcb_app.events.append(
-            events=[
-                TaggedEvent(
-                    decision=ExternalStudentRegistered(
-                        student_id=_STUDENT_ID,
-                        name="Anna Müller",
-                        course_limit=2,
-                    ),
-                    tags=[f"student:{_STUDENT_ID}"],
-                ),
-            ],
+        seed = TaggedEvent(
+            decision=ExternalStudentRegistered(
+                student_id=_STUDENT_ID,
+                name="Anna Müller",
+                course_limit=2,
+            ),
+            tags=[f"student:{_STUDENT_ID}"],
+            metadata={"correlation_id": "corr-drain"},
         )
+        position = dcb_app.events.append(events=[seed])
         # A crashed run: entry and tracking committed, command never landed.
         view.add_entry(
             RegisterStudentEntry(
                 student_id=_STUDENT_ID,
                 name="Anna Müller",
                 course_limit=2,
+                correlation_id="corr-drain",
+                causation_id=str(seed.uuid),
             ),
             Tracking(dcb_app.context_name, position),
         )
@@ -144,3 +152,12 @@ def test_drain_recovers_an_orphaned_entry() -> None:
                 timeout=5,
             )
             assert view.get_entries() == []
+
+        emitted = next(
+            env
+            for env in dcb_app.events.read()
+            if isinstance(env.decision, StudentRegistered)
+            and env.decision.student_id == _STUDENT_ID
+        )
+        assert emitted.metadata["correlation_id"] == "corr-drain"
+        assert emitted.metadata["causation_id"] == str(seed.uuid)

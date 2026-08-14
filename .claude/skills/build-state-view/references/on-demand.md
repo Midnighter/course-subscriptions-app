@@ -406,6 +406,7 @@ docs/
     openapi.json                                          # REGENERATED, not hand-written — `hatch run docs:openapi`
 src/snake_case({ProjectName})/
     main.py                                               # EDITED, not created — one import + one include_router line
+    metadata.py                                           # SHARED RUNTIME — verified in Step 0; this slice type adds nothing to it
     telemetry.py                                          # SHARED RUNTIME — verified in Step 0; this slice type adds nothing to it
     application.py                                        # SHARED RUNTIME — verified in Step 0; NOT edited by a slice
     view.py                                               # SHARED RUNTIME — verified in Step 0; the position helpers routes.py imports

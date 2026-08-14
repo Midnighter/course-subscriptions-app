@@ -62,9 +62,10 @@ A slice is built *on* the shared runtime; it never carries a copy of it. Before 
 |--------|------------|
 | `__init__.py` | `.build-kit/CLAUDE.md` → *First-time project setup* |
 | `command.py` | ditto — the command this automation fires subclasses its `CommandSlice` |
+| `metadata.py` | ditto — the module and its tests are in `.build-kit/references/metadata.md`; this slice type imports its `CORRELATION_ID_KEY` and `CAUSATION_ID_KEY` |
 | `telemetry.py` | ditto — the module and its tests are in `.build-kit/references/telemetry.md` |
-| `application.py` | ditto — including the `do()` override and the `command_span` inside it |
-| `main.py` | ditto — including `configure_telemetry()`, `instrument_app()` and `instrument_recorder()` |
+| `application.py` | ditto — including the `do()` override and the `command_metadata()` / `command_span` inside it |
+| `main.py` | ditto — including `configure_telemetry()`, `instrument_app()`, `instrument_recorder()` and `add_middleware(MetadataMiddleware)` |
 | `projection.py` | `.build-kit/CLAUDE.md` → *Projection runners*; **required** by this slice type — see Step 5 |
 | `tests/unit/test_projection.py` | ditto — the upgrade tripwire that pairs with `projection.py`; **its absence is invisible**, since a suite passes just as green without it |
 | `/healthz` in `main.py` | `.build-kit/CLAUDE.md` → *Supervising projections*; required once a supervisor exists, and this slice type registers one |
@@ -162,7 +163,6 @@ The templates below are shown one piece at a time. Together they need these impo
 module-level constants:
 
 ```python
-import contextlib
 import logging
 import os
 from abc import abstractmethod
@@ -181,6 +181,7 @@ from eventsourcing.pydantic import Decision
 from eventsourcing.utils import Environment, EnvType, get_topic
 
 from snake_case({ProjectName}).application import {ProjectName}App
+from snake_case({ProjectName}).metadata import CAUSATION_ID_KEY, CORRELATION_ID_KEY
 from snake_case({ProjectName}).projection import SharedAppProjectionRunner
 from snake_case({ProjectName}).snake_case({Context}).events import (
     {EmittedEventName},
@@ -280,11 +281,21 @@ from eventsourcing.popo import POPOTrackingRecorder
 
 @dataclass
 class {EntryName}:
-    """One outstanding unit of work: a command that has not yet been confirmed."""
+    """
+    One outstanding unit of work: a command that has not yet been confirmed.
+
+    The causal ids are stored alongside the work, not derived at command time,
+    because `drain()` (Step 4a) runs with no triggering envelope in hand.
+    Without them a retried command would be re-rooted into a fresh flow — the
+    same causal step, recorded as if it were a new cause. They are nullable so
+    that rows written before this ledger carried them still load.
+    """
 
     entity_id: str
     field: str
     attempts: int = 0          # see Step 4c
+    correlation_id: str | None = None
+    causation_id: str | None = None
 
 
 class {SliceName}View(TrackingRecorder):
@@ -430,11 +441,18 @@ closes it over the concrete exception the domain's command slice raises.
         """..."""
         match envelope.decision:
             case {TriggerEventName}(field=field, entity_id=entity_id):
-                entry = {EntryName}(entity_id=entity_id, field=field)
+                entry = {EntryName}(
+                    entity_id=entity_id,
+                    field=field,
+                    correlation_id=envelope.metadata.get(CORRELATION_ID_KEY),
+                    causation_id=str(envelope.uuid),
+                )
                 # Record before commanding: a lingering entry is the observable
-                # signal that the command did not land.
+                # signal that the command did not land. It also puts the causal
+                # ids somewhere durable before they are needed, which is what
+                # lets `drain()` retry in the same flow rather than a new one.
                 self.view.add_entry(entry, tracking)
-                self._fire(entry, _causation_metadata(envelope))
+                self._fire(entry)
             case {EmittedEventName}(entity_id=entity_id):
                 self.view.remove_entry(entity_id, tracking)
             case _:
@@ -452,18 +470,19 @@ tracking write makes every later `wait()` hang until timeout.
 ### Firing the command
 
 ```python
-def _causation_metadata(envelope: TaggedEvent[Decision]) -> dict[str, str]:
-    """Derive the metadata naming this envelope as the direct cause."""
+def _causation_metadata(entry: {EntryName}) -> dict[str, str]:
+    """Derive the metadata naming this entry's trigger as the direct cause."""
     metadata = {}
-    with contextlib.suppress(KeyError):
-        metadata["correlation_id"] = envelope.metadata["correlation_id"]
-    metadata["causation_id"] = str(envelope.uuid)
+    if entry.correlation_id is not None:
+        metadata[CORRELATION_ID_KEY] = entry.correlation_id
+    if entry.causation_id is not None:
+        metadata[CAUSATION_ID_KEY] = entry.causation_id
     return metadata
 
-    def _fire(self, entry: {EntryName}, metadata: dict[str, str]) -> None:
-        """Issue the command under the given metadata, swallowing failures."""
+    def _fire(self, entry: {EntryName}) -> None:
+        """Issue the command under the entry's own metadata, swallowing failures."""
         try:
-            with put_metadata_in_context(metadata):
+            with put_metadata_in_context(_causation_metadata(entry)):
                 self._command(entry)
         except Exception as error:
             if self._already_applied(error):
@@ -481,7 +500,8 @@ def _causation_metadata(envelope: TaggedEvent[Decision]) -> dict[str, str]:
 ```
 
 `_causation_metadata` is a module-level function, not a method — it needs nothing from
-the projection, and keeping it separate is what lets `_fire` take a plain `dict`.
+the projection but the entry it is handed. `CORRELATION_ID_KEY` and `CAUSATION_ID_KEY`
+come from the shared `metadata.py` (Step 0); do not spell the strings out again here.
 
 **The guard is mandatory, not defensive style.** An exception escaping
 `process_event` kills the runner's processing thread for good: the subscription
@@ -494,13 +514,18 @@ involved. `EventEnvelope.metadata` defaults to `get_metadata_from_context()` and
 `TaggedEventMapper` round-trips `metadata`/`uuid` through the store, so wrapping
 the call in `put_metadata_in_context` is sufficient — this mirrors what
 `EventSourcedProjection.process_event` does natively. `correlation_id` is carried
-forward when present (suppressed when absent, so an untagged trigger is not a
+forward when present (omitted when absent, so an untagged trigger is not a
 crash); `causation_id` is the **trigger event's own uuid**, naming the direct cause.
+Never take either id from a client — `causation_id` must always resolve to a real event
+in this log, and `metadata.py` sanitises the one id a client may influence.
 
-**`_fire` takes a plain `dict`, not the envelope**, and that is deliberate: recovery
-(Step 4a) fires commands with no triggering event at all, and there is no causation to
-invent for those. Deriving the metadata at the call site instead of inside `_fire` is
-what lets both paths share one method.
+**`_fire` takes the entry and nothing else**, and that is deliberate: recovery (Step 4a)
+fires commands with no triggering envelope in hand, so the ids have to come off the
+ledger row rather than a live event. Both call sites then pass the same thing, there is
+one source of truth, and a retry is recorded as the same causal step rather than a new
+cause. An entry whose ids are `None` yields `{}`, and `command_metadata()` in `do()`
+seeds it a fresh flow — so rows written before the ledger carried these columns degrade
+safely rather than raising.
 
 ### Telemetry — wrap `process_event` in a consumer span
 
@@ -524,9 +549,11 @@ Two points specific to automations:
   command's own completion event, not this log line, that drains it (Step 4a). Record a
   genuine failure on the current span before logging it — do not widen the guard, and do
   not let the span's own error handling suppress what `_fire` already handled.
-- **`drain()` fires with no envelope**, so those commands start a fresh trace. Entries
-  orphaned by a crash link to producer traces that may already be outside the
-  retention window. Expected, not a bug to code around.
+- **`drain()` fires with no envelope**, so those commands start a fresh *trace* — the
+  entry stores the causal ids, not a `traceparent`, and a trace orphaned by a crash may
+  already be outside the retention window anyway. Expected, not a bug to code around.
+  The `correlation_id`/`causation_id` chain survives regardless, which is the whole
+  reason the permanent ids and the sampled trace are kept separate.
 
 ---
 
@@ -559,13 +586,20 @@ a lost command. Two mechanisms are needed, and they cover different windows:
 
 ```python
     def drain(self) -> None:
-        """Re-issue commands for entries left outstanding by an earlier crash."""
+        """
+        Re-issue commands for entries left outstanding by an earlier crash.
+
+        The retry is indistinguishable from the first attempt: the entry
+        carries the original `correlation_id` and `causation_id`, so a
+        recovered command lands in the flow that asked for it rather than in
+        one invented at restart. A retry is the same causal step, not a new
+        cause.
+        """
         for entry in self.view.get_entries():
             if entry.attempts > MAX_ATTEMPTS:
                 continue
             self.view.count_attempt(entry.entity_id)
-            # No triggering envelope exists here, so there is no causation to carry.
-            self._fire(entry, {})
+            self._fire(entry)
 ```
 
 Call it in `create_runner()` **before** constructing the runner, so it completes
@@ -589,11 +623,14 @@ becomes ordinary event processing — no timer, no polling, no second thread:
 
 ```python
             case {FailureEventName}(entity_id=entity_id):
-                self._retry(entity_id, tracking, _causation_metadata(envelope))
+                self._retry(entity_id, tracking, envelope)
 ```
 
-Like the trigger branch, `_retry` derives its metadata at the call site so the retried
-command names the failure event as its cause.
+`_retry` looks the entry up, replaces its causal ids with the failure event's
+(`correlation_id` carried forward from `envelope.metadata`, `causation_id` set to
+`str(envelope.uuid)`), re-records it through `add_entry`, and then calls `_fire(entry)`.
+The retried command therefore names the failure event as its cause — and so does a later
+`drain()` of the same entry, since the ids now live on the row.
 
 Inject the failure recorder as a **separate optional port** with a no-op default, so the
 projection class works unchanged for models that have no such event:
@@ -896,9 +933,10 @@ def test_emitted_event_drains_the_entry(projection: {SliceName}Projection) -> No
 ```
 
 Cover, in the same style:
-- a trigger with no `correlation_id` still fires cleanly (the `suppress(KeyError)` path)
+- the **entry itself** stores `correlation_id` and `causation_id`, and the metadata `_fire` used equals exactly those two — that is what `drain()` later recovers from
+- a trigger with no `correlation_id` still fires cleanly, carrying `causation_id` alone
 - **a command that raises does not propagate**, and leaves the entry in place
-- `drain()` re-fires an entry seeded straight into the view (the orphan case), skips one already past `MAX_ATTEMPTS`, and is a no-op on a clean view
+- `drain()` re-fires an entry seeded straight into the view (the orphan case) **under that entry's own causal ids**, fires an entry with no stored ids under `{}` rather than raising, skips one already past `MAX_ATTEMPTS`, and is a no-op on a clean view
 - when a failure event exists: the failure port is called on failure, the failure event drives another attempt, attempts stop at `MAX_ATTEMPTS`, and the exhausted entry stays parked
 
 ### Acceptance-test notes
@@ -1156,6 +1194,7 @@ worth writing.
 ```
 src/snake_case({ProjectName})/
     projection.py                     # SHARED RUNTIME — SharedAppProjectionRunner + ProjectionSupervisor (create ONLY if absent; never per-slice)
+    metadata.py                       # SHARED RUNTIME — verified in Step 0; supplies the causal id keys, never written per-slice
     telemetry.py                      # SHARED RUNTIME — verified in Step 0; supplies `consumer_span`, never written per-slice
     main.py                           # EDITED, not created — view, supervisor registration, and /healthz if this is the first supervisor
 
@@ -1195,7 +1234,8 @@ The command slice under
 - [ ] `add_entry(..., tracking)` runs **before** the command is fired
 - [ ] Every `process_event` branch persists tracking, including `case _:`
 - [ ] The command call is wrapped in `try/except Exception` + `logger.exception(...)`
-- [ ] `_fire` takes `metadata: dict[str, str]`; every call site derives it (`_causation_metadata(envelope)`, or `{}` from `drain()`)
+- [ ] `_fire` takes the entry alone and derives its metadata via `_causation_metadata(entry)`; no call site passes a `dict`
+- [ ] The entry carries `correlation_id` and `causation_id` (nullable), populated on the trigger and persisted by every view implementation — including the Postgres `CREATE TABLE`, the `INSERT`'s `DO UPDATE SET`, and the `SELECT`
 - [ ] `drain()` implemented, and called in `create_runner()` **before** the runner is constructed
 - [ ] `{SliceName}Runner` subclasses `SharedAppProjectionRunner`, and sets `self.view` itself
 - [ ] `src/snake_case({ProjectName})/projection.py` exists (created only if absent — never per-slice)
@@ -1209,7 +1249,7 @@ The command slice under
 - [ ] `view_class` subclasses the recorder matching the configured `PERSISTENCE_MODULE` (POPO unless durability was asked for)
 - [ ] If the model has a failure event: it is in `topics`, injected as a separate optional port, its recording is itself guarded, and its slice's boundary can never match
 - [ ] If the model has **no** failure event: no failure port, no third topic, no `_retry` branch — `drain()` alone is the recovery path
-- [ ] `correlation_id` carried forward (suppressed if absent); `causation_id` set to `str(envelope.uuid)`
+- [ ] `correlation_id` carried forward (omitted if absent); `causation_id` set to `str(envelope.uuid)` — never taken from a client
 - [ ] Acceptance tests call `process_event` directly with strictly increasing tracking ids
 - [ ] Integration tests seed raw `TaggedEvent`s through the **shared** application, and `view.wait(context_name=..., notification_id=position + 1, ...)` rather than sleeping
 - [ ] The seeded event carries every tag the command slice's boundary selects on
@@ -1217,5 +1257,5 @@ The command slice under
 - [ ] If the command has an idempotency guard, `already_applied` is injected in `create_runner()` and a test proves `drain()`'s retry of an already-applied entry logs no failure (`caplog` at `ERROR`) and the entry still drains via its emitted event's redelivery
 - [ ] No `routes.py` created (automations are not exposed via HTTP) — `/healthz` is the one exception, and it is operational, not this slice's surface
 - [ ] `/healthz` exists in `create_app()` and its 503 path has an integration test; added here if this slice registered the project's first supervisor, left untouched if an earlier one did
-- [ ] Step 0 ran: `command.py`, `telemetry.py`, `application.py`, `main.py`, `projection.py` and `tests/unit/test_projection.py` all exist, and anything created there was committed as a `chore:` before this slice
+- [ ] Step 0 ran: `command.py`, `metadata.py`, `telemetry.py`, `application.py`, `main.py`, `projection.py` and `tests/unit/test_projection.py` all exist, and anything created there was committed as a `chore:` before this slice
 - [ ] `process_event`'s `match` is wrapped in one `consumer_span(envelope, ...)` that re-raises, and `_fire`'s broad guard stays narrowly scoped to the command port — its already-applied branch logs at `info`, everything else still at `exception`

@@ -37,9 +37,10 @@ A slice is built *on* the shared runtime; it never carries a copy of it. Before 
 |--------|------------|
 | `__init__.py` | `.build-kit/CLAUDE.md` → *First-time project setup* |
 | `command.py` | ditto — this slice type subclasses its `CommandSlice` |
+| `metadata.py` | ditto — the module and its tests are in `.build-kit/references/metadata.md` |
 | `telemetry.py` | ditto — the module and its tests are in `.build-kit/references/telemetry.md` |
-| `application.py` | ditto — including the `do()` override and the `command_span` inside it |
-| `main.py` | ditto — including `configure_telemetry()`, `instrument_app()` and `instrument_recorder()` |
+| `application.py` | ditto — including the `do()` override and the `command_metadata()` / `command_span` inside it |
+| `main.py` | ditto — including `configure_telemetry()`, `instrument_app()`, `instrument_recorder()` and `add_middleware(MetadataMiddleware)` |
 | `projection.py` | not used by this slice type; leave it alone if absent |
 
 A missing module is an incomplete setup, not an opt-out — in particular, **do not skip a slice's instrumentation because `telemetry.py` is absent.** Create what is missing, run the test suites, and commit it on its own as a `chore:` **before** starting the slice: a shared-runtime module folded into a `feat:` commit is unreviewable and reads as slice-specific when it is not.
@@ -444,7 +445,7 @@ hatch run docs:openapi     # rewrites docs/openapi.json
 
 `docs/openapi.json` is the project's record of what URLs exist (`.build-kit/CLAUDE.md` → *The OpenAPI spec is the source of truth*). Confirm the diff adds exactly the path you intended and changes nothing else — a diff that *moves* an existing endpoint means this slice took a path another one was already using.
 
-`create_app()` already calls `configure_telemetry()` and `instrument_app(app)`, and `application.py` already overrides `do()` with a `command_span` around it — Step 0 established that. Those are process-wide, written once, and **not** per-slice edits: leave them alone. Your slice inherits its command span, and the trace context on every event it emits, for free. Route handlers add no telemetry code.
+`create_app()` already calls `configure_telemetry()`, `instrument_app(app)` and `add_middleware(MetadataMiddleware)`, and `application.py` already overrides `do()` with `command_metadata()` and `command_span` around it — Step 0 established that. Those are process-wide, written once, and **not** per-slice edits: leave them alone. Your slice inherits its command span, the trace context, and the `correlation_id` / `created_at` on every event it emits, for free. Route handlers add no telemetry or metadata code — in particular, **a route never reads or writes event metadata itself**; see `.build-kit/CLAUDE.md` → *Event metadata*.
 
 ---
 
@@ -468,6 +469,7 @@ docs/
 src/snake_case({ProjectName})/
     main.py                                               # EDITED, not created — one import + one include_router line
     command.py                                            # SHARED RUNTIME — verified in Step 0; never written per-slice
+    metadata.py                                           # SHARED RUNTIME — verified in Step 0; never written per-slice
     telemetry.py                                          # SHARED RUNTIME — verified in Step 0; never written per-slice
     application.py                                        # SHARED RUNTIME — verified in Step 0; NOT edited by a slice
 src/snake_case({ProjectName})/snake_case({Context})/

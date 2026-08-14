@@ -51,13 +51,14 @@ import os
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
-from eventsourcing.domain import put_metadata_in_context
+from eventsourcing.domain import get_metadata_from_context, put_metadata_in_context
 from opentelemetry import trace
 from opentelemetry.context import Context
 from opentelemetry.propagate import extract, inject
-from opentelemetry.trace import Link, SpanKind
+from opentelemetry.trace import Link, Span, SpanKind
 
 from snake_case({ProjectName}).command import CommandSlice
+from snake_case({ProjectName}).metadata import CORRELATION_ID_KEY
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -137,6 +138,20 @@ def instrument_app(app: FastAPI) -> None:
     FastAPIInstrumentor.instrument_app(app)
 
 
+def _set_correlation_id(span: Span, metadata: dict[str, str]) -> None:
+    """
+    Copy the correlation id, if there is one, from metadata onto a span.
+
+    Args:
+        span: The span to annotate.
+        metadata: The event metadata to read the correlation id from.
+
+    """
+    correlation_id = metadata.get(CORRELATION_ID_KEY)
+    if correlation_id is not None:
+        span.set_attribute(CORRELATION_ID_KEY, correlation_id)
+
+
 @contextmanager
 def command_span(slice_: TSlice) -> Iterator[None]:
     """
@@ -153,6 +168,12 @@ def command_span(slice_: TSlice) -> Iterator[None]:
     span context is invalid and `inject` writes nothing, so the carrier is
     checked before it is put into context rather than recording an empty entry.
 
+    The `correlation_id` already in context is copied onto the span as an
+    attribute. Traces and the event log are then joinable in both directions
+    without either becoming the other's source of truth — which matters,
+    because a trace expires with the collector's retention window while the
+    event log does not.
+
     Args:
         slice_: The slice being advanced, executed, and saved.
 
@@ -162,7 +183,8 @@ def command_span(slice_: TSlice) -> Iterator[None]:
     """
     kind = "command" if isinstance(slice_, CommandSlice) else "replay"
     tracer = trace.get_tracer(TRACER_NAME)
-    with tracer.start_as_current_span(f"{kind} {type(slice_).__name__}"):
+    with tracer.start_as_current_span(f"{kind} {type(slice_).__name__}") as span:
+        _set_correlation_id(span, get_metadata_from_context())
         carrier: dict[str, str] = {}
         inject(carrier)
         if not carrier:
@@ -212,7 +234,10 @@ def consumer_span(envelope: TaggedEvent[Decision], name: str) -> Iterator[None]:
         context=Context(),
         kind=SpanKind.CONSUMER,
         links=links,
-    ):
+    ) as span:
+        # Read off the envelope, not the context: this thread inherits no
+        # contextvars, so the event itself is the only source here.
+        _set_correlation_id(span, envelope.metadata)
         yield
 
 
@@ -269,12 +294,13 @@ ever edited again for telemetry, and neither is a per-slice edit.
 ### `src/snake_case({ProjectName})/application.py`
 
 ```python
+from snake_case({ProjectName}).metadata import command_metadata
 from snake_case({ProjectName}).telemetry import command_span
 
 
 class {ProjectName}App(DcbApplication):
     def do(self, s: TSlice) -> TSlice:
-        with command_span(s):
+        with command_metadata(), command_span(s):
             ...            # the existing body, unchanged
             return s
 ```
@@ -282,6 +308,10 @@ class {ProjectName}App(DcbApplication):
 The span wraps the **whole** body, `save()` included, because `trigger_event` fires inside
 `execute()` and the trace context has to still be in scope when the events are constructed
 *and* when they are appended.
+
+`command_metadata()` sits **outside** `command_span(s)`, so `_set_correlation_id` finds a
+`correlation_id` in context to annotate the span with. See
+`.build-kit/references/metadata.md` for that module.
 
 ### `src/snake_case({ProjectName})/main.py`
 

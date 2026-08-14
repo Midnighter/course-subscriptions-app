@@ -41,11 +41,12 @@ A slice is built *on* the shared runtime; it never carries a copy of it. Before 
 |--------|------------|
 | `__init__.py` | `.build-kit/CLAUDE.md` → *First-time project setup* |
 | `command.py` | ditto — a view slice stays on plain `Slice`, but `do()` imports it |
+| `metadata.py` | ditto — the module and its tests are in `.build-kit/references/metadata.md` |
 | `telemetry.py` | ditto — the module and its tests are in `.build-kit/references/telemetry.md` |
-| `application.py` | ditto — including the `do()` override and the `command_span` inside it |
+| `application.py` | ditto — including the `do()` override and the `command_metadata()` / `command_span` inside it |
 | `view.py` | ditto — the position headers and helpers every view route below imports; **its absence is invisible**, since a route that never reports a position still answers 200 |
 | `tests/unit/test_view.py` | ditto — pins `is_behind` and `view_headers`, whose `None` branches are otherwise untested |
-| `main.py` | ditto — including `configure_telemetry()`, `instrument_app()` and `instrument_recorder()` |
+| `main.py` | ditto — including `configure_telemetry()`, `instrument_app()`, `instrument_recorder()` and `add_middleware(MetadataMiddleware)` |
 | `projection.py` | `.build-kit/CLAUDE.md` → *Projection runners*; needed by the **materialized** approach only |
 | `tests/unit/test_projection.py` | ditto — the upgrade tripwire that pairs with `projection.py`; **its absence is invisible**, since a suite passes just as green without it |
 | `/healthz` in `main.py` | `.build-kit/CLAUDE.md` → *Supervising projections*; required once a supervisor exists — the **materialized** approach registers one |

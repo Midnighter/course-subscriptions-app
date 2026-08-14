@@ -985,6 +985,7 @@ def create_app() -> FastAPI:
     configure_telemetry()          # FIRST — `instrument_app` reads the state it sets
     app = FastAPI(lifespan=lifespan)
     instrument_app(app)
+    app.add_middleware(MetadataMiddleware)
     # ... every earlier slice's existing `include_router` lines, untouched ...
     app.include_router(snake_case({SliceName})_router)                         # ADD
     return app
@@ -1144,6 +1145,7 @@ docs/
 src/snake_case({ProjectName})/
     main.py                                               # EDITED, not created — router, view, supervisor registration, /healthz
     projection.py                                         # SHARED RUNTIME — SharedAppProjectionRunner + ProjectionSupervisor (create ONLY if absent; never per-slice)
+    metadata.py                                           # SHARED RUNTIME — verified in Step 0; never written per-slice
     telemetry.py                                          # SHARED RUNTIME — verified in Step 0; supplies `consumer_span`, never written per-slice
     view.py                                               # SHARED RUNTIME — verified in Step 0; the position helpers routes.py imports
 src/snake_case({ProjectName})/snake_case({Context})/

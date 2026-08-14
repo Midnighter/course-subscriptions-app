@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import logging
 import os
 from abc import abstractmethod
@@ -28,6 +27,7 @@ from course_subscriptions.course_subscriptions.events import (
 from course_subscriptions.course_subscriptions.register_student.slice import (
     RegisterStudentSlice,
 )
+from course_subscriptions.metadata import CAUSATION_ID_KEY, CORRELATION_ID_KEY
 from course_subscriptions.projection import SharedAppProjectionRunner
 from course_subscriptions.telemetry import consumer_span
 
@@ -43,12 +43,22 @@ MAX_ATTEMPTS = 3
 
 @dataclass
 class RegisterStudentEntry:
-    """One outstanding unit of work: a registration not yet confirmed."""
+    """
+    One outstanding unit of work: a registration not yet confirmed.
+
+    The causal ids are stored alongside the work, not derived at command time,
+    because `drain()` runs with no triggering envelope in hand. Without them a
+    retried registration would be re-rooted into a fresh flow — the same causal
+    step, recorded as if it were a new cause. They are nullable so that rows
+    written before this ledger carried them still load.
+    """
 
     student_id: str
     name: str
     course_limit: int
     attempts: int = 0
+    correlation_id: str | None = None
+    causation_id: str | None = None
 
 
 class RegisterStudentView(TrackingRecorder):
@@ -154,7 +164,9 @@ class PostgresRegisterStudentView(PostgresTrackingRecorder, RegisterStudentView)
                 "student_id text PRIMARY KEY, "
                 "name text NOT NULL, "
                 "course_limit bigint NOT NULL, "
-                "attempts bigint NOT NULL DEFAULT 0)",
+                "attempts bigint NOT NULL DEFAULT 0, "
+                "correlation_id text, "
+                "causation_id text)",
             ).format(*self._table),
         )
 
@@ -166,14 +178,25 @@ class PostgresRegisterStudentView(PostgresTrackingRecorder, RegisterStudentView)
             # trigger overwrites rather than raising.
             curs.execute(
                 SQL(
-                    "INSERT INTO {0}.{1} (student_id, name, course_limit, attempts) "
-                    "VALUES (%s, %s, %s, %s) "
+                    "INSERT INTO {0}.{1} "
+                    "(student_id, name, course_limit, attempts, "
+                    "correlation_id, causation_id) "
+                    "VALUES (%s, %s, %s, %s, %s, %s) "
                     "ON CONFLICT (student_id) DO UPDATE SET "
                     "name = EXCLUDED.name, "
                     "course_limit = EXCLUDED.course_limit, "
-                    "attempts = EXCLUDED.attempts",
+                    "attempts = EXCLUDED.attempts, "
+                    "correlation_id = EXCLUDED.correlation_id, "
+                    "causation_id = EXCLUDED.causation_id",
                 ).format(*self._table),
-                (entry.student_id, entry.name, entry.course_limit, entry.attempts),
+                (
+                    entry.student_id,
+                    entry.name,
+                    entry.course_limit,
+                    entry.attempts,
+                    entry.correlation_id,
+                    entry.causation_id,
+                ),
             )
 
     def remove_entry(self, student_id: str, tracking: Tracking) -> None:
@@ -191,7 +214,8 @@ class PostgresRegisterStudentView(PostgresTrackingRecorder, RegisterStudentView)
         with self.datastore.transaction(commit=False) as curs:
             curs.execute(
                 SQL(
-                    "SELECT student_id, name, course_limit, attempts FROM {0}.{1}",
+                    "SELECT student_id, name, course_limit, attempts, "
+                    "correlation_id, causation_id FROM {0}.{1}",
                 ).format(*self._table),
             )
             rows = curs.fetchall()
@@ -201,6 +225,8 @@ class PostgresRegisterStudentView(PostgresTrackingRecorder, RegisterStudentView)
                 name=row["name"],
                 course_limit=row["course_limit"],
                 attempts=row["attempts"],
+                correlation_id=row["correlation_id"],
+                causation_id=row["causation_id"],
             )
             for row in rows
         ]
@@ -237,12 +263,27 @@ def _no_already_applied(error: BaseException) -> bool:  # noqa: ARG001
     return False
 
 
-def _causation_metadata(envelope: TaggedEvent[Decision]) -> dict[str, str]:
-    """Derive the metadata naming this envelope as the direct cause."""
+def _causation_metadata(entry: RegisterStudentEntry) -> dict[str, str]:
+    """
+    Derive the metadata naming this entry's trigger as the direct cause.
+
+    Read off the entry rather than a live envelope, so that `drain()` — which
+    has no envelope — issues its retry under exactly the metadata the first
+    attempt used. Entries written before the ledger carried these ids yield an
+    empty dict, and `command_metadata` then seeds a fresh flow for them.
+
+    Args:
+        entry: The outstanding work item to derive metadata from.
+
+    Returns:
+        The metadata to record the resulting events under.
+
+    """
     metadata = {}
-    with contextlib.suppress(KeyError):
-        metadata["correlation_id"] = envelope.metadata["correlation_id"]
-    metadata["causation_id"] = str(envelope.uuid)
+    if entry.correlation_id is not None:
+        metadata[CORRELATION_ID_KEY] = entry.correlation_id
+    if entry.causation_id is not None:
+        metadata[CAUSATION_ID_KEY] = entry.causation_id
     return metadata
 
 
@@ -279,20 +320,25 @@ class RegisterStudentProjection(Projection[RegisterStudentView, TaggedEvent[Deci
                         student_id=student_id,
                         name=name,
                         course_limit=course_limit,
+                        correlation_id=envelope.metadata.get(CORRELATION_ID_KEY),
+                        causation_id=str(envelope.uuid),
                     )
                     # Record before commanding: a lingering entry is the
-                    # observable signal that the command did not land.
+                    # observable signal that the command did not land. It also
+                    # puts the causal ids somewhere durable before they are
+                    # needed, which is what lets `drain()` retry in the same
+                    # flow rather than starting a new one.
                     self.view.add_entry(entry, tracking)
-                    self._fire(entry, _causation_metadata(envelope))
+                    self._fire(entry)
                 case StudentRegistered(student_id=student_id):
                     self.view.remove_entry(student_id, tracking)
                 case _:
                     self.view.insert_tracking(tracking)
 
-    def _fire(self, entry: RegisterStudentEntry, metadata: dict[str, str]) -> None:
-        """Issue the command under the given metadata, swallowing failures."""
+    def _fire(self, entry: RegisterStudentEntry) -> None:
+        """Issue the command under the entry's own metadata, swallowing failures."""
         try:
-            with put_metadata_in_context(metadata):
+            with put_metadata_in_context(_causation_metadata(entry)):
                 self._command(entry)
         except Exception as error:
             if self._already_applied(error):
@@ -315,14 +361,20 @@ class RegisterStudentProjection(Projection[RegisterStudentView, TaggedEvent[Deci
                 logger.exception("failed to register student %s", entry.student_id)
 
     def drain(self) -> None:
-        """Re-issue commands for entries left outstanding by an earlier crash."""
+        """
+        Re-issue commands for entries left outstanding by an earlier crash.
+
+        The retry is indistinguishable from the first attempt: the entry
+        carries the original `correlation_id` and `causation_id`, so a
+        recovered registration lands in the flow that asked for it rather than
+        in one invented at restart. A retry is the same causal step, not a new
+        cause.
+        """
         for entry in self.view.get_entries():
             if entry.attempts > MAX_ATTEMPTS:
                 continue
             self.view.count_attempt(entry.student_id)
-            # No triggering envelope exists here, so there is no causation
-            # to carry.
-            self._fire(entry, {})
+            self._fire(entry)
 
 
 class RegisterStudentRunner(SharedAppProjectionRunner):

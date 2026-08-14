@@ -38,6 +38,7 @@ from course_subscriptions.course_subscriptions.subscribe_student import (
 from course_subscriptions.course_subscriptions.unsubscribe_student import (
     routes as unsubscribe_student_routes,
 )
+from course_subscriptions.metadata import MetadataMiddleware
 from course_subscriptions.projection import ProjectionSupervisor
 from course_subscriptions.telemetry import (
     configure_telemetry,
@@ -87,6 +88,7 @@ def create_app() -> FastAPI:
     configure_telemetry()  # FIRST — `instrument_app` reads the state it sets
     app = FastAPI(lifespan=lifespan)
     instrument_app(app)
+    app.add_middleware(MetadataMiddleware)
     app.include_router(student_course_subscriptions_routes.router)
     app.include_router(subscribe_student_routes.router)
     app.include_router(unsubscribe_student_routes.router)

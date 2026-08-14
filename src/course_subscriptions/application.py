@@ -9,6 +9,7 @@ from eventsourcing.pydantic import DcbApplication
 from fastapi import Request  # noqa: TC002
 
 from course_subscriptions.command import CommandOutcome, CommandSlice
+from course_subscriptions.metadata import command_metadata
 from course_subscriptions.telemetry import command_span
 
 if TYPE_CHECKING:
@@ -31,8 +32,14 @@ class CourseSubscriptionsApp(DcbApplication):
         one span, ``save`` included, because ``trigger_event`` fires inside
         ``execute`` and the trace context must still be in scope when the
         events are constructed *and* when they are appended.
+
+        ``command_metadata`` is outermost so ``command_span`` can read the
+        ``correlation_id`` off the context for its span attribute. It is also
+        the fallback seed for every non-HTTP entry point — ``drain()``, the
+        manual scenario script, and the test suites — which reach this method
+        without passing through ``MetadataMiddleware``.
         """
-        with command_span(s):
+        with command_metadata(), command_span(s):
             if type(s).do_projection:
                 s = self.repository.advance(s)
             s.execute()

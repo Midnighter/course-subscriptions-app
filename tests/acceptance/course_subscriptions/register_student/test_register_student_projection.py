@@ -100,6 +100,29 @@ def test_trigger_fires_the_command(
     assert projection.view.get_entries() == [entry]
 
 
+def test_the_entry_records_the_causality_it_was_fired_under(
+    projection: RegisterStudentProjection,
+    recorder: _Recorder,
+) -> None:
+    """
+    The ledger persists the causal ids, not just the payload.
+
+    Without this `drain()` has nothing to recover the flow from, and a retry
+    after a crash lands in a flow invented at restart.
+    """
+    envelope = _trigger(correlation_id="corr-1")
+    projection.process_event(envelope, Tracking("upstream", 1))
+
+    _, metadata = recorder.calls[0]
+    stored = projection.view.get_entries()[0]
+    assert stored.correlation_id == "corr-1"
+    assert stored.causation_id == str(envelope.uuid)
+    assert metadata == {
+        "correlation_id": stored.correlation_id,
+        "causation_id": stored.causation_id,
+    }
+
+
 def test_trigger_with_no_correlation_id_still_fires(
     projection: RegisterStudentProjection,
     recorder: _Recorder,
@@ -159,7 +182,44 @@ def test_failing_command_does_not_propagate_and_leaves_entry() -> None:
 
 
 def test_drain_refires_an_orphaned_entry(recorder: _Recorder) -> None:
-    """`drain()` re-fires an entry seeded straight into the view."""
+    """
+    `drain()` re-fires an entry in the flow that originally asked for it.
+
+    A retry is the same causal step as the first attempt, not a new cause, so
+    the recovered command carries the trigger's own ids rather than the fresh
+    ones `command_metadata` would otherwise seed.
+    """
+    view = POPORegisterStudentView()
+    causation_id = "9c3d5a1e-0e2b-4f7a-9a1d-1b2c3d4e5f60"
+    view.add_entry(
+        RegisterStudentEntry(
+            student_id=_STUDENT_ID,
+            name="Anna Müller",
+            course_limit=2,
+            correlation_id="corr-1",
+            causation_id=causation_id,
+        ),
+        Tracking("upstream", 1),
+    )
+    projection = RegisterStudentProjection(view=view, command=recorder)
+
+    projection.drain()
+
+    assert len(recorder.calls) == 1
+    entry, metadata = recorder.calls[0]
+    assert entry.student_id == _STUDENT_ID
+    assert metadata == {"correlation_id": "corr-1", "causation_id": causation_id}
+
+
+def test_drain_refires_an_entry_that_predates_the_causal_columns(
+    recorder: _Recorder,
+) -> None:
+    """
+    An entry with no stored causality still fires, under no metadata.
+
+    Rows written before the ledger carried these ids must not raise on
+    recovery; `command_metadata` seeds them a fresh flow instead.
+    """
     view = POPORegisterStudentView()
     view.add_entry(
         RegisterStudentEntry(
@@ -173,9 +233,7 @@ def test_drain_refires_an_orphaned_entry(recorder: _Recorder) -> None:
 
     projection.drain()
 
-    assert len(recorder.calls) == 1
-    entry, metadata = recorder.calls[0]
-    assert entry.student_id == _STUDENT_ID
+    _, metadata = recorder.calls[0]
     assert metadata == {}
 
 

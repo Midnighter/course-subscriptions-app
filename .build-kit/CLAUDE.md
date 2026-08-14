@@ -50,7 +50,22 @@ OpenTelemetry covers three seams the library gives no help with: the command pat
 - **`process_event` spans are links, never children.** Two independent reasons: the producing span ended long before (often minutes), and `BaseProjectionRunner`'s processing thread is a bare `threading.Thread`, which does **not** inherit contextvars — so ambient propagation is not merely wrong here, it is impossible. Use `SpanKind.CONSUMER` with a `Link`, per the OTel messaging conventions for temporally decoupled producers and consumers.
 - **Instrumentation must never swallow an exception.** A span context manager that suppresses is the blanket `try/except` around `process_event` wearing a different hat: it advances past a poison event and diverges the view from the log permanently while `/healthz` still reports 200. Record the exception on the span and **re-raise**, so the supervisor still sees the thread die.
 - **Guard `None` in metrics.** `recorder.head()` and `max_tracking_id()` both return `int | None`. Before a projection has processed anything its lag is *undefined*, not zero — skip the observation rather than reporting a fake backlog.
+- **Both spans set a `correlation_id` attribute** — `command_span` off the context, `consumer_span` off the envelope, since the projection thread inherits no contextvars. That makes traces and the event log **joinable in both directions** without either becoming the other's source of truth. See *Event metadata*.
 - **`opentelemetry-api` is a required dependency; only the *SDK* belongs to the `telemetry` extra, and the `dev` env alone.** Split them deliberately: `telemetry.py` and the `do()` override import from the API at module scope, so an API that is merely optional breaks every suite at import time — the no-op path is an API-level proxy to `NoOpTracer` and still needs the API installed. Put `opentelemetry-api` in `[project] dependencies` and **not** in the extra as well; listing it in both lets the extra pin or reinstall it independently of the base requirement. The extra holds sdk/exporter/instrumentation only. The test suites deliberately do not install *that*, so they exercise the no-op path. Don't add the SDK to a test env to assert on spans; construct an in-memory provider inside the test instead.
+
+## Event metadata
+
+Every recorded event carries three general-purpose keys in `TaggedEvent.metadata`: `correlation_id` (the flow it belongs to), `causation_id` (the event that caused it), and `created_at` (when the unit of work that wrote it ran). They ride on the **envelope, not the `Decision`**, so adding them changes no event schema and needs no migration.
+
+- **`src/snake_case({ProjectName})/metadata.py` is shared runtime, written once at *First-time project setup*.** The module and its tests are in **`.build-kit/references/metadata.md`** — copy them from there rather than deriving them from the bullets below, which are the *why*, not the source. Same repair rule as `telemetry.py`: a project missing it was set up incompletely, so create it and its wiring first and commit as a `chore:`.
+- **Metadata is seeded centrally, at exactly two places.** `MetadataMiddleware` puts a `correlation_id` in context per HTTP request; `{ProjectName}App.do` seeds `created_at` always, and `correlation_id` only when absent. **Slices and routes never touch metadata** — a slice that reaches for it is a slice that will disagree with the next one.
+- **`MetadataMiddleware` must be pure ASGI, not `BaseHTTPMiddleware`.** The latter runs the endpoint in a separate anyio task, so a contextvar set in its `dispatch` never reaches the route and the metadata silently arrives empty. This is the single most likely way to ship a `correlation_id` that is always freshly minted and never the client's.
+- **A client-supplied `correlation_id` is sanitised, never trusted.** It lands in a `jsonb` column, the logs, and a response header, so bound it and reject control characters. Replace an unusable one outright rather than truncating: a stored id is then either exactly what the client sent or one we minted, never a mangled prefix of the two.
+- **`causation_id` is derived locally, always, and is never accepted from a client.** The invariant it buys is that every `causation_id` resolves to an event uuid in our own log. That is also why a **root command carries no `causation_id` at all**: an HTTP command has no causing *event*, and minting an id that resolves to nothing would break exactly the invariant that justified rejecting the client's. A root is still unambiguous — `correlation_id` present, `causation_id` absent.
+- **`created_at` uses explicit UTC, not the library's `datetime_now_with_tzinfo()`.** That honours `TZINFO_TOPIC`, and the timestamp on a permanent log record should not be reconfigurable by an environment variable set for unrelated reasons. It is stamped per command, not per flow: an automation's command is a later unit of work than the trigger that caused it.
+- **This is not a substitute for `traceparent`, and does not replace it.** They differ in lifetime (permanent versus the collector's retention window), in availability (always versus off unless an exporter is configured — every test env runs a no-op tracer), and in granularity (`causation_id` is a stored event's uuid, so it cannot be derived from a span id). Keep both, and make them **joinable** via the span attribute described under *Observability*.
+- **Metadata is not queryable and is not part of the append condition.** `DcbQueryItem` is `types + tags` only. Any dedup or idempotency keyed on metadata can only ever be read-then-write, with a race window. The DCB-native way to make a command idempotent is a `command:<key>` tag inside `consistency_boundary()`, not a metadata lookup.
+- **Adding a key later — `source`, `actor`, a tenant id — is a one-line change in `metadata.py` and nowhere else.** If a proposed key needs edits in a slice, it is in the wrong place.
 
 ## Test layout
 
@@ -67,12 +82,13 @@ OpenTelemetry covers three seams the library gives no help with: the command pat
 
 Before the first build skill runs in a new project, check whether the files below exist. If not, create them in this order before proceeding with the skill — the build skills themselves assume all of this is already in place. Every build skill's **Step 0** re-checks this list, so a project that was set up incompletely is repaired at the next slice rather than carried forward.
 
-The shared runtime is these seven modules under `src/snake_case({ProjectName})/`:
+The shared runtime is these eight modules under `src/snake_case({ProjectName})/`:
 
 | Module | Created |
 |---|---|
 | `__init__.py` | setup |
 | `command.py` | setup |
+| `metadata.py` | setup |
 | `telemetry.py` | setup |
 | `application.py` | setup |
 | `view.py` | setup |
@@ -83,7 +99,7 @@ Each is written **once** per project and is never a per-slice artefact. `project
 
 The `/healthz` route is deferred on the same terms: the slice that registers the **first** supervisor adds it to `create_app()`, whatever that slice's type. It has nothing to report until a supervisor exists, and a supervisor without it is a projection that can die unobserved. See *Supervising projections* → *The `/healthz` route*.
 
-The order below matters: `telemetry.py` imports `CommandSlice` from `command.py`, `application.py` imports `command_span` from `telemetry.py`, and `view.py` imports `{ProjectName}App` from `application.py`.
+The order below matters: `telemetry.py` imports `CommandSlice` from `command.py` and `CORRELATION_ID_KEY` from `metadata.py`, `application.py` imports `command_metadata` from `metadata.py` and `command_span` from `telemetry.py`, `main.py` imports `MetadataMiddleware` from `metadata.py`, and `view.py` imports `{ProjectName}App` from `application.py`. `metadata.py` imports nothing of the project's own, which is why it can come this early.
 
 1. **Resolve every `TODO` placeholder in `pyproject.toml`.** `grep -n TODO pyproject.toml` to find them all: `[project] name`, `description`, `authors`; `packages = ["src/TODO"]` and `version-file = "src/TODO/_version.py"`; `[tool.coverage.paths] source`/`omit`; `[tool.ruff] exclude`; `[tool.ruff.lint.isort] known-first-party`; `pyrefly check src/TODO`; and the three `--cov=TODO` occurrences in the `unit-tests`/`acceptance-tests`/`integration-tests` scripts. Never create `src/snake_case({ProjectName})/_version.py` by hand — `hatch-vcs` generates it at build time and it's gitignored.
 2. **Create `src/snake_case({ProjectName})/__init__.py`** — copyright header plus a one-line module docstring naming the package.
@@ -115,14 +131,16 @@ The order below matters: `telemetry.py` imports `CommandSlice` from `command.py`
        event_ids: list[UUID]
        position: int | None
    ```
-4. **Create `src/snake_case({ProjectName})/telemetry.py`** — copy it from **`.build-kit/references/telemetry.md`**, which holds the whole module verbatim. Do not derive it from the *Observability* section above; that section is the rationale, the reference file is the source. Create it now, unconditionally: the dependencies are already declared, it costs nothing at runtime with no exporter configured, and a project that ships without it never acquires it later.
-5. **Create `src/snake_case({ProjectName})/application.py`** — the one process-wide application. Import `DcbApplication` from `eventsourcing.pydantic`, **not** the generic `eventsourcing.dcb.application` — the Pydantic module wires the `Transcoder` this project needs. The `do()` override is written **here, once**, and is not a per-slice edit; see *Command outcomes* and *Observability*.
+4. **Create `src/snake_case({ProjectName})/metadata.py`** — copy it from **`.build-kit/references/metadata.md`**, which holds the whole module verbatim. Do not derive it from the *Event metadata* section below; that section is the rationale, the reference file is the source. Create it now, unconditionally, for the same reason as `telemetry.py`: it costs nothing, and a project that ships without a `correlation_id` cannot retrofit one onto events already written.
+5. **Create `src/snake_case({ProjectName})/telemetry.py`** — copy it from **`.build-kit/references/telemetry.md`**, which holds the whole module verbatim. Do not derive it from the *Observability* section above; that section is the rationale, the reference file is the source. Create it now, unconditionally: the dependencies are already declared, it costs nothing at runtime with no exporter configured, and a project that ships without it never acquires it later.
+6. **Create `src/snake_case({ProjectName})/application.py`** — the one process-wide application. Import `DcbApplication` from `eventsourcing.pydantic`, **not** the generic `eventsourcing.dcb.application` — the Pydantic module wires the `Transcoder` this project needs. The `do()` override is written **here, once**, and is not a per-slice edit; see *Command outcomes* and *Observability*.
    ```python
    from eventsourcing.domain import TSlice
    from eventsourcing.pydantic import DcbApplication
    from fastapi import Request
 
    from snake_case({ProjectName}).command import CommandOutcome, CommandSlice
+   from snake_case({ProjectName}).metadata import command_metadata
    from snake_case({ProjectName}).telemetry import command_span
 
 
@@ -131,7 +149,7 @@ The order below matters: `telemetry.py` imports `CommandSlice` from `command.py`
 
        def do(self, s: TSlice) -> TSlice:
            """Advance, execute and save a slice, capturing a command's outcome."""
-           with command_span(s):
+           with command_metadata(), command_span(s):
                if type(s).do_projection:
                    s = self.repository.advance(s)
                s.execute()
@@ -148,8 +166,8 @@ The order below matters: `telemetry.py` imports `CommandSlice` from `command.py`
        """Return the process-wide application from FastAPI request state."""
        return request.state.dcb_app
    ```
-   The span wraps the **whole** body, `save()` included, because `trigger_event` fires inside `execute()` and the trace context must still be in scope when the events are constructed *and* when they are appended.
-6. **Create `src/snake_case({ProjectName})/view.py`** — the read side's counterpart to `command.py`: everything a view route needs to report the position it reflects. See *View positions* below for why each piece exists.
+   The span wraps the **whole** body, `save()` included, because `trigger_event` fires inside `execute()` and the trace context must still be in scope when the events are constructed *and* when they are appended. `command_metadata()` is **outermost**, so `command_span` can read the `correlation_id` off the context for its span attribute.
+7. **Create `src/snake_case({ProjectName})/view.py`** — the read side's counterpart to `command.py`: everything a view route needs to report the position it reflects. See *View positions* below for why each piece exists.
    ```python
    from typing import Annotated, Any
 
@@ -222,7 +240,7 @@ The order below matters: `telemetry.py` imports `CommandSlice` from `command.py`
        )
    ```
    `{ProjectName}App.context_name` is a **class** attribute, so `materialized_position` reads it without an application instance — which is what lets a materialized view's route keep depending on its view alone, with no `get_application`. Never re-declare that string in a route.
-7. **Create `src/snake_case({ProjectName})/main.py`** — a minimal bootstrap lifespan. Do **not** reach for `AsyncExitStack`/`ProjectionSupervisor` yet; that upgrade happens later, the first time a projection is added (see *Lifespan ownership* and *Supervising projections* below).
+8. **Create `src/snake_case({ProjectName})/main.py`** — a minimal bootstrap lifespan. Do **not** reach for `AsyncExitStack`/`ProjectionSupervisor` yet; that upgrade happens later, the first time a projection is added (see *Lifespan ownership* and *Supervising projections* below).
    ```python
    from collections.abc import AsyncIterator
    from contextlib import asynccontextmanager
@@ -230,6 +248,7 @@ The order below matters: `telemetry.py` imports `CommandSlice` from `command.py`
    from fastapi import FastAPI
 
    from snake_case({ProjectName}).application import {ProjectName}App
+   from snake_case({ProjectName}).metadata import MetadataMiddleware
    from snake_case({ProjectName}).telemetry import (
        configure_telemetry,
        instrument_app,
@@ -250,12 +269,13 @@ The order below matters: `telemetry.py` imports `CommandSlice` from `command.py`
        configure_telemetry()
        app = FastAPI(lifespan=lifespan)
        instrument_app(app)
+       app.add_middleware(MetadataMiddleware)
        return app
    ```
    Two orderings are load-bearing: `configure_telemetry()` comes **first** in `create_app()`, because `instrument_app` does nothing unless it finds the state that call sets; and `instrument_recorder(dcb_app)` comes **after** the application is constructed, because `recorder` is set in `__init__`. When the lifespan is later upgraded to an `AsyncExitStack`, `instrument_recorder(dcb_app)` moves to immediately after `stack.enter_context({ProjectName}App())`, on the same principle.
 
    Each slice's own build step adds its `include_router` line inside `create_app()` — that's the only per-slice edit to this file.
-8. **Create `tests/integration/conftest.py`** with the shared `client` fixture only — slice-specific fixtures (ids, seeded histories) belong in each slice's own test module, not here.
+9. **Create `tests/integration/conftest.py`** with the shared `client` fixture only — slice-specific fixtures (ids, seeded histories) belong in each slice's own test module, not here.
    ```python
    from collections.abc import Iterator
 
@@ -271,13 +291,14 @@ The order below matters: `telemetry.py` imports `CommandSlice` from `command.py`
        with TestClient(create_app()) as client:
            yield client
    ```
-9. **Create `tests/unit/test_telemetry.py`** — also in `.build-kit/references/telemetry.md`. These are real tests of real logic, not placeholders: they pin the no-op path, the idempotence of `instrument_recorder`, and that no wrapper swallows an exception. They must pass **without** `opentelemetry-sdk` installed, which is what proves the no-op path.
-10. **Create `tests/unit/test_view.py`** — real tests too, and the cheapest place to pin the position contract, since `is_behind` and `view_headers` are pure functions. Cover every branch: no `at_least` given, `current is None`, `current < at_least`, `current == at_least`, `current > at_least`, and that `view_headers(None)` omits `X-Current-Position` while still carrying `Cache-Control`. The two `None` cases mean opposite things — "no precondition" versus "nothing processed yet" — and a test that only exercises one of them will not catch them being collapsed.
+10. **Create `tests/unit/test_metadata.py`** and **`tests/integration/test_metadata.py`** — both in `.build-kit/references/metadata.md`. The unit tests pin the pure functions and the seeding rules; the middleware needs the integration suite, because `httpx` lives in the `integration` dependency group and because the claim worth testing — that the contextvar reaches the *route handler* — needs a live ASGI stack to be worth anything.
+11. **Create `tests/unit/test_telemetry.py`** — also in `.build-kit/references/telemetry.md`. These are real tests of real logic, not placeholders: they pin the no-op path, the idempotence of `instrument_recorder`, and that no wrapper swallows an exception. They must pass **without** `opentelemetry-sdk` installed, which is what proves the no-op path.
+12. **Create `tests/unit/test_view.py`** — real tests too, and the cheapest place to pin the position contract, since `is_behind` and `view_headers` are pure functions. Cover every branch: no `at_least` given, `current is None`, `current < at_least`, `current == at_least`, `current > at_least`, and that `view_headers(None)` omits `X-Current-Position` while still carrying `Cache-Control`. The two `None` cases mean opposite things — "no precondition" versus "nothing processed yet" — and a test that only exercises one of them will not catch them being collapsed.
 
     Also assert that **every documented response declares `X-Current-Position`** — the 200 and 425 in `VIEW_RESPONSES`, plus `NOT_FOUND_RESPONSE` — and that `VIEW_RESPONSES` holds *only* those two status codes, so 404 stays opt-in for the views that genuinely have an absence case. This is not busywork over a constant: a header the routes send but the spec omits is invisible to every generated client, and **no request-level test can catch it**, because the response the route actually returns is correct. The omission is only visible in `docs/openapi.json`, which nothing else asserts on.
-11. **Fill in the remaining `TODO` titles** in `README.md`, `mkdocs.yml`, and `docs/index.md` with the project's display name. These don't block any tooling, but resolve them as part of setup rather than leaving them for later.
+13. **Fill in the remaining `TODO` titles** in `README.md`, `mkdocs.yml`, and `docs/index.md` with the project's display name. These don't block any tooling, but resolve them as part of setup rather than leaving them for later.
 
-Do not create placeholder tests as part of this setup — see *Test layout* below. Neither `tests/unit/test_telemetry.py` nor `tests/unit/test_view.py` is one.
+Do not create placeholder tests as part of this setup — see *Test layout* below. None of `tests/unit/test_metadata.py`, `tests/integration/test_metadata.py`, `tests/unit/test_telemetry.py`, or `tests/unit/test_view.py` is one.
 
 ## Building a Slice
 
