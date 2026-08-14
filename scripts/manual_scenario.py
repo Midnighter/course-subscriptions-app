@@ -187,7 +187,9 @@ def main() -> int:
             label="re-register course A",
         )
 
-        # register_student: success + student_already_registered
+        # register_student: success, and a duplicate submission is still
+        # accepted (the route is unconditional; the internal
+        # student_already_registered guard lives in the automation, not here)
         for student_id in (STUDENT_1, STUDENT_2, STUDENT_3):
             expect(
                 register_student(client, student_id, 1),
@@ -196,9 +198,8 @@ def main() -> int:
             )
         expect(
             register_student(client, STUDENT_1, 1),
-            422,
-            "student_already_registered",
-            label="re-register student 1",
+            201,
+            label="re-register student 1 (accepted; automation absorbs the duplicate)",
         )
 
         # course_catalogue: initial listing
