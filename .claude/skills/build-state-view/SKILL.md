@@ -43,6 +43,8 @@ A slice is built *on* the shared runtime; it never carries a copy of it. Before 
 | `command.py` | ditto — a view slice stays on plain `Slice`, but `do()` imports it |
 | `telemetry.py` | ditto — the module and its tests are in `.build-kit/references/telemetry.md` |
 | `application.py` | ditto — including the `do()` override and the `command_span` inside it |
+| `view.py` | ditto — the position headers and helpers every view route below imports; **its absence is invisible**, since a route that never reports a position still answers 200 |
+| `tests/unit/test_view.py` | ditto — pins `is_behind` and `view_headers`, whose `None` branches are otherwise untested |
 | `main.py` | ditto — including `configure_telemetry()`, `instrument_app()` and `instrument_recorder()` |
 | `projection.py` | `.build-kit/CLAUDE.md` → *Projection runners*; needed by the **materialized** approach only |
 | `tests/unit/test_projection.py` | ditto — the upgrade tripwire that pairs with `projection.py`; **its absence is invisible**, since a suite passes just as green without it |
@@ -163,11 +165,30 @@ Applies to the GET route in both approaches:
 
 | Exception | HTTP status |
 |-----------|-------------|
-| View finished with the entity absent (`view.found is False`) | `404 Not Found` |
+| The view has not reached the caller's `X-Position-AtLeast` | `425 Too Early` — empty body, **checked before the 404** |
+| **Single-entity** view finished with the entity absent (`view.found is False`) | `404 Not Found` |
+| **Collection** view finished with nothing to show | `200 OK` with an empty collection — **not** a 404 |
 | Query-parameter validation failure (Pydantic) | `422 Unprocessable Entity` — FastAPI does this automatically |
 | Anything else | let FastAPI return `500` |
 
 **Views read, they don't decide.** If the requested entity has no events, return 404; otherwise return the projection. Do not raise domain errors from a projection.
+
+**The 425 comes first, and the order is load-bearing.** A caller polling for the entity it just created has not yet been caught up to; answering 404 tells it the entity does not exist, and it stops polling. Staleness outranks absence.
+
+**Only a single-entity view has an absence case at all.** A collection view answers an empty store with an empty collection and a 200 — that is a complete answer, not a missing resource, and a client that asked "what is in the catalogue?" is entitled to hear "nothing". Do not add a 404 branch to a collection view to make it match the template; the precondition check still comes first either way, because it guards the response as a whole rather than the lookup.
+
+---
+
+## The position contract
+
+This applies to **both** approaches, and both references implement it in their Step 4. The reasoning is in `.build-kit/CLAUDE.md` → *View positions*; the rules are:
+
+1. **Every view response reports the position it reflects**, in the `X-Current-Position` response header — on the 200, on the 404, and on the 425. The header is **omitted** when the position is `None`, which means the store is empty (on-demand) or the projection has processed nothing yet (materialized). Never substitute `0`.
+2. **Every view route accepts an optional `X-Position-AtLeast` request header.** When the view has not reached it, answer an empty `425 Too Early` — before the 404. When the header is absent, there is no precondition and the route behaves exactly as it always did.
+
+Both come from `src/snake_case({ProjectName})/view.py` (`PositionAtLeast`, `VIEW_RESPONSES`, `NOT_FOUND_RESPONSE`, `is_behind`, `view_headers`, `too_early`) — a view route imports them, it does not restate them. `VIEW_RESPONSES` covers the 200 and the 425; a single-entity view that can 404 spreads `NOT_FOUND_RESPONSE` in alongside it, so the position header is documented on that response too. The position itself is `view.last_known_position` for an on-demand view and `materialized_position(view)` for a materialized one.
+
+This is what makes read-your-writes checkable: a client keeps the `position` from a command's 201 and polls the view with it, on whatever interval it chooses. **The route never blocks and never waits** — no `view.wait()` in a handler.
 
 ---
 

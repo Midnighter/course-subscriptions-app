@@ -67,7 +67,7 @@ OpenTelemetry covers three seams the library gives no help with: the command pat
 
 Before the first build skill runs in a new project, check whether the files below exist. If not, create them in this order before proceeding with the skill — the build skills themselves assume all of this is already in place. Every build skill's **Step 0** re-checks this list, so a project that was set up incompletely is repaired at the next slice rather than carried forward.
 
-The shared runtime is these six modules under `src/snake_case({ProjectName})/`:
+The shared runtime is these seven modules under `src/snake_case({ProjectName})/`:
 
 | Module | Created |
 |---|---|
@@ -75,6 +75,7 @@ The shared runtime is these six modules under `src/snake_case({ProjectName})/`:
 | `command.py` | setup |
 | `telemetry.py` | setup |
 | `application.py` | setup |
+| `view.py` | setup |
 | `main.py` | setup |
 | `projection.py` | the first time a projection slice is built (see *Projection runners*) |
 
@@ -82,7 +83,7 @@ Each is written **once** per project and is never a per-slice artefact. `project
 
 The `/healthz` route is deferred on the same terms: the slice that registers the **first** supervisor adds it to `create_app()`, whatever that slice's type. It has nothing to report until a supervisor exists, and a supervisor without it is a projection that can die unobserved. See *Supervising projections* → *The `/healthz` route*.
 
-The order below matters: `telemetry.py` imports `CommandSlice` from `command.py`, and `application.py` imports `command_span` from `telemetry.py`.
+The order below matters: `telemetry.py` imports `CommandSlice` from `command.py`, `application.py` imports `command_span` from `telemetry.py`, and `view.py` imports `{ProjectName}App` from `application.py`.
 
 1. **Resolve every `TODO` placeholder in `pyproject.toml`.** `grep -n TODO pyproject.toml` to find them all: `[project] name`, `description`, `authors`; `packages = ["src/TODO"]` and `version-file = "src/TODO/_version.py"`; `[tool.coverage.paths] source`/`omit`; `[tool.ruff] exclude`; `[tool.ruff.lint.isort] known-first-party`; `pyrefly check src/TODO`; and the three `--cov=TODO` occurrences in the `unit-tests`/`acceptance-tests`/`integration-tests` scripts. Never create `src/snake_case({ProjectName})/_version.py` by hand — `hatch-vcs` generates it at build time and it's gitignored.
 2. **Create `src/snake_case({ProjectName})/__init__.py`** — copyright header plus a one-line module docstring naming the package.
@@ -148,7 +149,80 @@ The order below matters: `telemetry.py` imports `CommandSlice` from `command.py`
        return request.state.dcb_app
    ```
    The span wraps the **whole** body, `save()` included, because `trigger_event` fires inside `execute()` and the trace context must still be in scope when the events are constructed *and* when they are appended.
-6. **Create `src/snake_case({ProjectName})/main.py`** — a minimal bootstrap lifespan. Do **not** reach for `AsyncExitStack`/`ProjectionSupervisor` yet; that upgrade happens later, the first time a projection is added (see *Lifespan ownership* and *Supervising projections* below).
+6. **Create `src/snake_case({ProjectName})/view.py`** — the read side's counterpart to `command.py`: everything a view route needs to report the position it reflects. See *View positions* below for why each piece exists.
+   ```python
+   from typing import Annotated, Any
+
+   from eventsourcing.persistence import TrackingRecorder  # noqa: TC002
+   from fastapi import Header, Response, status
+
+   from snake_case({ProjectName}).application import {ProjectName}App
+
+   CURRENT_POSITION_HEADER = "X-Current-Position"
+   POSITION_AT_LEAST_HEADER = "X-Position-AtLeast"
+
+   PositionAtLeast = Annotated[
+       int | None,
+       Header(
+           alias=POSITION_AT_LEAST_HEADER,
+           ge=0,
+           description="Answer only once the view has reached at least this position.",
+       ),
+   ]
+
+   _POSITION_HEADER_SPEC: dict[str, Any] = {
+       CURRENT_POSITION_HEADER: {
+           "description": (
+               "Position of the last event this view reflects. Absent "
+               "when the view has processed nothing."
+           ),
+           "schema": {"type": "integer"},
+       },
+   }
+
+   VIEW_RESPONSES: dict[int | str, dict[str, Any]] = {
+       status.HTTP_200_OK: {"headers": _POSITION_HEADER_SPEC},
+       status.HTTP_425_TOO_EARLY: {
+           "description": f"The view has not reached {POSITION_AT_LEAST_HEADER}.",
+           "headers": _POSITION_HEADER_SPEC,
+       },
+   }
+
+   NOT_FOUND_RESPONSE: dict[str, Any] = {
+       "description": "This view holds no such entity.",
+       "headers": _POSITION_HEADER_SPEC,
+   }
+
+
+   def materialized_position(view: TrackingRecorder) -> int | None:
+       """Return the position of the last event a materialized view processed."""
+       return view.max_tracking_id({ProjectName}App.context_name)
+
+
+   def is_behind(current: int | None, at_least: int | None) -> bool:
+       """Return whether a caller's required position has not been reached."""
+       if at_least is None:
+           return False
+       return current is None or current < at_least
+
+
+   def view_headers(current: int | None) -> dict[str, str]:
+       """Return the headers every view response carries, position included."""
+       headers = {"Cache-Control": "no-store"}
+       if current is not None:
+           headers[CURRENT_POSITION_HEADER] = str(current)
+       return headers
+
+
+   def too_early(current: int | None) -> Response:
+       """Return an empty 425 telling the caller the view has not caught up."""
+       return Response(
+           status_code=status.HTTP_425_TOO_EARLY,
+           headers=view_headers(current),
+       )
+   ```
+   `{ProjectName}App.context_name` is a **class** attribute, so `materialized_position` reads it without an application instance — which is what lets a materialized view's route keep depending on its view alone, with no `get_application`. Never re-declare that string in a route.
+7. **Create `src/snake_case({ProjectName})/main.py`** — a minimal bootstrap lifespan. Do **not** reach for `AsyncExitStack`/`ProjectionSupervisor` yet; that upgrade happens later, the first time a projection is added (see *Lifespan ownership* and *Supervising projections* below).
    ```python
    from collections.abc import AsyncIterator
    from contextlib import asynccontextmanager
@@ -181,7 +255,7 @@ The order below matters: `telemetry.py` imports `CommandSlice` from `command.py`
    Two orderings are load-bearing: `configure_telemetry()` comes **first** in `create_app()`, because `instrument_app` does nothing unless it finds the state that call sets; and `instrument_recorder(dcb_app)` comes **after** the application is constructed, because `recorder` is set in `__init__`. When the lifespan is later upgraded to an `AsyncExitStack`, `instrument_recorder(dcb_app)` moves to immediately after `stack.enter_context({ProjectName}App())`, on the same principle.
 
    Each slice's own build step adds its `include_router` line inside `create_app()` — that's the only per-slice edit to this file.
-7. **Create `tests/integration/conftest.py`** with the shared `client` fixture only — slice-specific fixtures (ids, seeded histories) belong in each slice's own test module, not here.
+8. **Create `tests/integration/conftest.py`** with the shared `client` fixture only — slice-specific fixtures (ids, seeded histories) belong in each slice's own test module, not here.
    ```python
    from collections.abc import Iterator
 
@@ -197,10 +271,13 @@ The order below matters: `telemetry.py` imports `CommandSlice` from `command.py`
        with TestClient(create_app()) as client:
            yield client
    ```
-8. **Create `tests/unit/test_telemetry.py`** — also in `.build-kit/references/telemetry.md`. These are real tests of real logic, not placeholders: they pin the no-op path, the idempotence of `instrument_recorder`, and that no wrapper swallows an exception. They must pass **without** `opentelemetry-sdk` installed, which is what proves the no-op path.
-9. **Fill in the remaining `TODO` titles** in `README.md`, `mkdocs.yml`, and `docs/index.md` with the project's display name. These don't block any tooling, but resolve them as part of setup rather than leaving them for later.
+9. **Create `tests/unit/test_telemetry.py`** — also in `.build-kit/references/telemetry.md`. These are real tests of real logic, not placeholders: they pin the no-op path, the idempotence of `instrument_recorder`, and that no wrapper swallows an exception. They must pass **without** `opentelemetry-sdk` installed, which is what proves the no-op path.
+10. **Create `tests/unit/test_view.py`** — real tests too, and the cheapest place to pin the position contract, since `is_behind` and `view_headers` are pure functions. Cover every branch: no `at_least` given, `current is None`, `current < at_least`, `current == at_least`, `current > at_least`, and that `view_headers(None)` omits `X-Current-Position` while still carrying `Cache-Control`. The two `None` cases mean opposite things — "no precondition" versus "nothing processed yet" — and a test that only exercises one of them will not catch them being collapsed.
 
-Do not create placeholder tests as part of this setup — see *Test layout* below. `tests/unit/test_telemetry.py` is not one.
+    Also assert that **every documented response declares `X-Current-Position`** — the 200 and 425 in `VIEW_RESPONSES`, plus `NOT_FOUND_RESPONSE` — and that `VIEW_RESPONSES` holds *only* those two status codes, so 404 stays opt-in for the views that genuinely have an absence case. This is not busywork over a constant: a header the routes send but the spec omits is invisible to every generated client, and **no request-level test can catch it**, because the response the route actually returns is correct. The omission is only visible in `docs/openapi.json`, which nothing else asserts on.
+11. **Fill in the remaining `TODO` titles** in `README.md`, `mkdocs.yml`, and `docs/index.md` with the project's display name. These don't block any tooling, but resolve them as part of setup rather than leaving them for later.
+
+Do not create placeholder tests as part of this setup — see *Test layout* below. Neither `tests/unit/test_telemetry.py` nor `tests/unit/test_view.py` is one.
 
 ## Building a Slice
 
@@ -289,6 +366,29 @@ A command route answers with the ids of the events it recorded and the position 
 - **`position` is the append position — the last event of the batch.** It is the value `TrackingRecorder.wait(context_name, notification_id, timeout)` polls, which is what makes read-your-writes possible for a caller.
 - **A successful command answers 201, never 200.** Every command that succeeds appends events to the log, so the response *is* a creation — the verb in the slice name is beside the point (`UnsubscribeStudent` creates a `StudentUnsubscribed` event just as `RegisterCourse` creates a `CourseRegistered` one). Uniform status means a client never has to know which command it called to know what success looks like.
 - **Nothing recorded means HTTP 204 — the only other success code.** `do()` skips `save()` when `new_decisions` is empty, so there is no position to report. Unreachable through the API while every slice either emits or raises — cover it with a unit test that drives a silent `CommandSlice` directly.
+
+### View positions
+
+A command answers with the position its events landed at; a view answers with the position it *reflects*. Together those two numbers are what make read-your-writes checkable: a caller keeps the `position` from its 201 and polls the view until the view has reached it. Without this, a client that has just written cannot tell a stale read from a settled one, and — for a materialized view — cannot tell staleness from the entity genuinely not existing, because both read as 404.
+
+The polling is the **client's** job, on whatever interval it likes. The server answers immediately, every time.
+
+**Two position sources, both already provided by the library.** Neither needs new plumbing on the slice:
+
+| View kind | Current position |
+|---|---|
+| On-demand (`Slice` replay) | `view.last_known_position`, set by `repository.advance()` inside `do()` |
+| Materialized (`TrackingRecorder`) | `materialized_position(view)` — i.e. `view.max_tracking_id(context_name)` |
+
+- **`last_known_position` is the store head, not the boundary's last event.** `advance()` assigns it `read_response.head`, and with no `limit` both backends compute that as the global maximum position (`InMemoryDcbRecorder` returns `self.events[-1].position`; `postgres_tt` runs `SELECT MAX(id)`). That is what puts it on the same scale as a command's `position` — and it means **an on-demand view is caught up by construction**, so its check always passes. Keep the check anyway: a client must not have to know which kind of view it is talking to in order to poll it.
+- **Both are `int | None`, and `None` is not `0`.** For an on-demand view it means the store is empty; for a materialized one, that the projection has processed nothing yet. Undefined is not "at the beginning", so **omit `X-Current-Position` entirely** rather than sending a placeholder.
+- **The precondition is checked *before* the 404.** Reversed, a caller polling for the entity it just created gets 404 on the first attempt and stops. Staleness outranks absence.
+- **Not every view has a 404 to order against.** A *collection* view's absence is an empty collection at 200 — `/course-catalogue` over an empty store is a correct, complete answer, not a missing resource. Only a **single-entity** view has a genuine absence case, and only it raises the 404. Do not invent one to satisfy a template: an empty list that 404s tells a client the address is wrong when it is not. `VIEW_RESPONSES` therefore documents only 200 and 425; a single-entity route adds `responses={**VIEW_RESPONSES, status.HTTP_404_NOT_FOUND: NOT_FOUND_RESPONSE}`.
+- **Every documented response declares the header, not just the 200.** `X-Current-Position` on the 425 is the whole reason a client can size its next poll, and on the 404 it is how a poller distinguishes "not there yet" from "not there" — but a header the route sends and the spec omits is invisible to every generated client. That is why `_POSITION_HEADER_SPEC` is declared once and shared by all three entries rather than inlined into the 200.
+- **Never block in a route.** Do not reach for `view.wait()` here: it sleeps the *calling* thread, which in an `async def` route is the event loop, and even handed to a threadpool it pins one worker per waiting client. `wait()` is a test and lifespan tool. The route reports and returns.
+- **Views send `Cache-Control: no-store`**, which `view_headers()` does for you. This is load-bearing rather than tidiness: the request header changes the *status* without changing the body, so it does not fragment a shared cache key the way a query parameter would. A cache that stored the 200 could otherwise replay it to a caller whose `X-Position-AtLeast` was never met.
+- **The precondition travels in a header, not the address.** `X-Position-AtLeast` does not select a different resource — the representation is identical whatever the caller asks for; only the server's willingness to answer changes. That is a conditional request, in the same family as `If-None-Match`. The *API addressing* rules above are therefore untouched by this.
+- **Route handlers still add no telemetry.** Unchanged: the HTTP span comes from `FastAPIInstrumentor` and the command span from `do()`.
 
 ### Projection runners
 

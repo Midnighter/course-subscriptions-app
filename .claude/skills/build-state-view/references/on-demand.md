@@ -98,11 +98,19 @@ File: `src/snake_case({ProjectName})/snake_case({Context})/snake_case({SliceName
 ```python
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 
 from snake_case({ProjectName}).application import {ProjectName}App, get_application
 from snake_case({ProjectName}).snake_case({Context}).snake_case({SliceName}).projection import {SliceName}View
+from snake_case({ProjectName}).view import (
+    NOT_FOUND_RESPONSE,
+    VIEW_RESPONSES,
+    PositionAtLeast,
+    is_behind,
+    too_early,
+    view_headers,
+)
 
 router = APIRouter(tags=["snake_case({SliceName})"])
 
@@ -122,19 +130,27 @@ class {SliceName}Response(BaseModel):
     "/dogs/{dog_id}/profile",
     response_model={SliceName}Response,
     operation_id="snake_case({SliceName})",
+    responses={**VIEW_RESPONSES, status.HTTP_404_NOT_FOUND: NOT_FOUND_RESPONSE},
 )
 async def snake_case({SliceName})(
     dog_id: str,
+    response: Response,
     app: Annotated[{ProjectName}App, Depends(get_application)],
-) -> {SliceName}Response:
+    position_at_least: PositionAtLeast = None,
+) -> {SliceName}Response | Response:
     """{One-line description of the endpoint}."""
     view = app.do({SliceName}View(entity_id=dog_id))
+    position = view.last_known_position
+    if is_behind(position, position_at_least):
+        return too_early(position)
     if not view.found:
         msg = f"{dog_id} not found"
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=msg,
+            headers=view_headers(position),
         )
+    response.headers.update(view_headers(position))
     return {SliceName}Response(
         dog_id=dog_id,
         field1=view.field1,
@@ -146,7 +162,11 @@ Notes on the template:
 
 - **A slice must never define its own application, nor its own dependency factory.** `get_application` is the single dependency; it reads the process-wide `{ProjectName}App` off `request.state` (Step 7 and `.build-kit/CLAUDE.md`).
 - **`do()` takes an instance and returns it**, having replayed the events matching `consistency_boundary()` through the `@event` handlers and then called `execute()` (a no-op here). It mutates the perspective in place *and* returns it, so `view = app.do(...)` is the documented contract.
-- **`response_model` matches the return type.** The view class is a `Slice`, not a `BaseModel`; map its attributes onto a Pydantic response model explicitly.
+- **`last_known_position` needs no code in `projection.py`.** It is inherited machinery: `Perspective.__new__` initialises it to `None` and `repository.advance()` — called by `do()` for any slice with `@event` handlers — assigns it the replay's head position. `projection.py` stays "the view `Slice` and nothing else"; the route just reads the attribute.
+- **The `is_behind` check here always passes, and it stays anyway.** `advance()` sets `last_known_position` to the *store head* rather than the boundary's last event, so an on-demand view is caught up by construction. Keeping the check means a client can poll any view the same way without knowing which kind it is — see `SKILL.md` → *The position contract*.
+- **The 425 comes before the 404.** A caller polling for the entity it just created would otherwise be told the entity does not exist and stop.
+- **All three responses carry the position.** The injected `response: Response` covers the 200 only — its headers are discarded when the handler raises or returns a `Response` of its own, which is why the 404 passes `headers=` to `HTTPException` and `too_early()` builds its own. `view_headers()` also emits `Cache-Control: no-store`; that is required, not tidiness (`.build-kit/CLAUDE.md` → *View positions*).
+- **`response_model=` must stay explicit on the decorator.** The return annotation is a union with `Response`, which FastAPI cannot derive a schema from, so the success schema has to be declared — the same reason command routes declare it. The view class is a `Slice`, not a `BaseModel`: map its attributes onto a Pydantic response model explicitly.
 - **The router carries no `prefix`; the full path goes on the decorator.** One greppable path string per slice and no path parameter hidden in a prefix. The slice name lives on in `tags=` and `operation_id=`, which is what links the endpoint back to the slice in the generated spec.
 - **The path parameter takes the entity's own name** (`dog_id`), not a generic `entity_id`. The internal `{SliceName}View(entity_id=…)` keyword is unaffected — that is the projection's own interface, not the public one.
 - **Regenerate the spec once the route is wired in** (Step 7): `hatch run docs:openapi`, then stage `docs/openapi.json` with the rest of the slice.
@@ -158,6 +178,15 @@ The FastAPI/Pydantic house rules this template follows (`Annotated[…, Depends(
 If the view exposes a list (e.g. "all licences for an organisation"), keep the
 same pattern but change the slice's `_tags()` to the parent entity, project into
 a `list[…]` on `self`, and return `list[{SliceName}Response]`.
+
+**Drop the 404 entirely when you do.** A collection view has no absence case: an
+empty collection at 200 is the complete, correct answer to "what is in here?",
+and 404 would tell the caller its address was wrong when it was not. So the
+`found` check and `HTTPException` come out, `responses=VIEW_RESPONSES` loses its
+`NOT_FOUND_RESPONSE` entry, and the return annotation narrows to
+`list[{SliceName}Response] | Response`. The precondition check stays exactly where
+it is — it guards the whole response, not the lookup, so it has nothing to do
+with whether a 404 exists.
 
 The address follows the tags, as always: a list scoped to a parent entity nests
 under it (`GET /organisations/{organisation_id}/licences`), while a list with no
@@ -283,6 +312,43 @@ Cross-entity isolation ("another entity's events do not leak into this one's
 view") belongs here too, since acceptance-level GWT refuses histories outside the
 boundary.
 
+### The position contract needs two tests of its own
+
+The route reports where it is and honours a caller's precondition (`SKILL.md` → *The
+position contract*). Both halves are invisible when broken — a route that forgets the
+header still answers a perfectly good 200 — so pin them, using the same seeding fixtures:
+
+```python
+def test_snake_case({SliceName})_reports_its_position(
+    client: TestClient, prior_thing: {EventName}, entity_id: str,
+) -> None:
+    """A successful query reports the position the view reflects."""
+    response = client.get(f"/dogs/{entity_id}/profile")
+    assert response.status_code == 200
+    assert int(response.headers["X-Current-Position"]) >= 1
+
+
+def test_snake_case({SliceName})_reports_too_early_when_behind(
+    client: TestClient, prior_thing: {EventName}, entity_id: str,
+) -> None:
+    """A precondition the view cannot meet is answered with 425, not with stale data."""
+    response = client.get(
+        f"/dogs/{entity_id}/profile",
+        headers={"X-Position-AtLeast": "1000000"},
+    )
+    assert response.status_code == 425
+    assert response.content == b""
+```
+
+- **The 425 test is deterministic because the position is unreachable**, not because it
+  raced the store into a lag window. An on-demand view is caught up by construction, so
+  there is no real lag to catch — any position the store could actually reach would pass
+  the check and return 200.
+- **Seed at least one event first.** Against an empty store `last_known_position` is
+  `None`, the header is absent, and the first test would fail for the wrong reason.
+- **Assert `>= 1`, never a literal.** The position is the store head, so it counts every
+  event the fixtures seeded, not only the ones this view projects.
+
 ---
 
 ## Step 7 — Wire the router into the central FastAPI app
@@ -314,6 +380,13 @@ Confirm the diff adds exactly the path you intended and changes nothing else —
 diff that *moves* an existing endpoint means this slice took a path another one
 was already using.
 
+One benign exception: adding the **first** parameter to a previously
+parameter-less operation makes FastAPI emit a `422` response for it that was
+not there before. A view route picks up its first parameter from
+`X-Position-AtLeast` alone, so a collection view with no path or query
+parameters gains a 422 the moment it adopts the position contract. That is
+generated, correct, and not a collision — do not try to suppress it.
+
 ---
 
 ## Key patterns
@@ -335,6 +408,7 @@ src/snake_case({ProjectName})/
     main.py                                               # EDITED, not created — one import + one include_router line
     telemetry.py                                          # SHARED RUNTIME — verified in Step 0; this slice type adds nothing to it
     application.py                                        # SHARED RUNTIME — verified in Step 0; NOT edited by a slice
+    view.py                                               # SHARED RUNTIME — verified in Step 0; the position helpers routes.py imports
 src/snake_case({ProjectName})/snake_case({Context})/
     events.py                                             # shared event Decisions (add new types here; do not remove existing ones)
 src/snake_case({ProjectName})/snake_case({Context})/snake_case({SliceName})/

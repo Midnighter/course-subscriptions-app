@@ -520,11 +520,20 @@ could be left pointing at a dead one. The view is the stable object.
 ```python
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel
 
 from snake_case({ProjectName}).snake_case({Context}).snake_case({SliceName}).projection import (
     {SliceName}View,
+)
+from snake_case({ProjectName}).view import (
+    NOT_FOUND_RESPONSE,
+    VIEW_RESPONSES,
+    PositionAtLeast,
+    is_behind,
+    materialized_position,
+    too_early,
+    view_headers,
 )
 
 router = APIRouter(tags=["snake_case({SliceName})"])
@@ -549,19 +558,27 @@ class {EntryName}Response(BaseModel):
     "/dogs/{dog_id}/profile",
     response_model=list[{EntryName}Response],
     operation_id="snake_case({SliceName})",
+    responses={**VIEW_RESPONSES, status.HTTP_404_NOT_FOUND: NOT_FOUND_RESPONSE},
 )
 async def snake_case({SliceName})(
     dog_id: str,
+    response: Response,
     view: Annotated[{SliceName}View, Depends(get_snake_case({SliceName})_view)],
-) -> list[{EntryName}Response]:
+    position_at_least: PositionAtLeast = None,
+) -> list[{EntryName}Response] | Response:
     """{One-line description of the endpoint}."""
+    position = materialized_position(view)
+    if is_behind(position, position_at_least):
+        return too_early(position)
     entries = view.get_entries(dog_id)
     if entries is None:
         msg = f"{dog_id} not found"
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=msg,
+            headers=view_headers(position),
         )
+    response.headers.update(view_headers(position))
     return [
         {EntryName}Response(field1=entry.field1, field2=entry.field2)
         for entry in entries
@@ -586,13 +603,40 @@ Notes on the template:
   raises `AttributeError` at request time (see `.build-kit/CLAUDE.md` → *Application
   wiring*). Step 6 needs no `dependency_overrides` for the view: it runs against
   the real app, whose lifespan populates this key.
-- Status codes follow the *Error mapping* table in `SKILL.md` — staleness
-  (a write not yet caught up by the projection) is not distinguished from
-  genuine absence; both read as 404. A request arriving before the runner's
-  background thread has processed a very recent write is a real race in any
-  materialized view — call it out in the endpoint docstring if the slice
-  definition's specifications imply low staleness tolerance, but do not add
-  speculative retry/backoff logic that the slice.json doesn't ask for.
+- **Read the position *before* `get_entries`, not after.** The projection thread
+  runs concurrently with this handler, so reading it afterwards could report a
+  position newer than the entries just returned — the client would then believe
+  a write it cannot see has been reflected. Reading first can only understate,
+  which is the safe direction.
+- **`materialized_position` is where `context_name` lives.** It reads it off the
+  `{ProjectName}App` **class**, which is why this route still depends on the view
+  alone and needs no `get_application` (`.build-kit/CLAUDE.md` → *View positions*).
+  Never re-declare that string here.
+- **The precondition check comes before `get_entries`, so 425 outranks 404.**
+  This is the one place staleness is genuinely distinguishable from absence — a
+  materialized view really can lag, unlike an on-demand one. A caller that sends
+  `X-Position-AtLeast` gets 425 while the runner catches up and 404 only when the
+  entity truly has no events. A caller that omits the header still cannot tell
+  the two apart; that is the documented cost of omitting it, not a defect to work
+  around. Either way, **do not add retry or backoff logic in the route** — the
+  client polls, the server answers immediately (`SKILL.md` → *The position contract*).
+- **All three responses carry the position.** The injected `response: Response`
+  covers the 200 only — its headers are discarded when the handler raises or
+  returns a `Response` of its own, hence `headers=` on the `HTTPException` and
+  `too_early()` building its own. `view_headers()` also emits
+  `Cache-Control: no-store`, which is required rather than tidy.
+- **`response_model=` must stay explicit.** The return annotation is a union with
+  `Response`, which FastAPI cannot derive a schema from. The bare-array response
+  model is otherwise unchanged — the position rides in a header precisely so no
+  existing body shape had to be wrapped in an envelope.
+- **This route returns a list and still 404s, which is not a contradiction of the
+  collection rule.** It is scoped to *one* entity, and `get_entries` distinguishes
+  "never recorded" (`None`) from "recorded, currently empty" (`[]`) — so absence
+  is real here. A view with no parent entity to be absent (a catalogue, a search)
+  has nothing to 404 on: it answers 200 with an empty list and drops both the
+  `HTTPException` and the `NOT_FOUND_RESPONSE` entry. Preserve that `None`/`[]`
+  distinction in the view interface, or the 404 silently becomes unreachable.
+- Status codes follow the *Error mapping* table in `SKILL.md`.
 
 ### Collection endpoints
 
@@ -788,6 +832,49 @@ route that emits `{EventName}`, then `GET` this view and assert the write shows
 up. That is the property a runner-owned application silently broke, and no
 seeded-event test can catch it.
 
+### The position contract needs two tests of its own
+
+The route reports where the projection has got to and honours a caller's
+precondition (`SKILL.md` → *The position contract*). Both halves are invisible
+when broken — a route that forgets the header still answers a perfectly good 200
+— so pin them, reusing the same settled fixtures:
+
+```python
+def test_snake_case({SliceName})_reports_its_position(
+    client: TestClient, prior_thing: {EventName}, entity_id: str,
+) -> None:
+    """A successful query reports the position the view has processed up to."""
+    response = client.get(f"/dogs/{entity_id}/profile")
+    assert response.status_code == 200
+    assert int(response.headers["X-Current-Position"]) >= 1
+
+
+def test_snake_case({SliceName})_reports_too_early_when_behind(
+    client: TestClient, prior_thing: {EventName}, entity_id: str,
+) -> None:
+    """A precondition the view cannot meet is answered with 425, not with stale data."""
+    response = client.get(
+        f"/dogs/{entity_id}/profile",
+        headers={"X-Position-AtLeast": "1000000"},
+    )
+    assert response.status_code == 425
+    assert response.content == b""
+```
+
+- **The 425 test asks for a position that will never be reached, and that is the
+  point.** Do not "improve" it by racing the runner into a real lag window —
+  seeding an event and querying before the background thread catches up passes
+  only when the thread happens to lose, which is a flaky test wearing a
+  correctness test's clothes. An unreachable position exercises the same branch
+  every time.
+- **Depend on `prior_thing` in both.** It appends *and* waits, so the projection
+  has processed something by the time the test body runs. Without it
+  `max_tracking_id` is `None`, the header is absent, and the first test fails for
+  the wrong reason.
+- **Assert `>= 1`, never a literal.** The position is the upstream notification
+  id, so it counts every event the fixtures seeded, not only the ones this
+  projection keeps.
+
 ### Integration-test notes
 
 `.build-kit/CLAUDE.md` covers the mechanics this fixture depends on: the mandatory
@@ -961,6 +1048,13 @@ Confirm the diff adds exactly the path you intended and changes nothing else —
 diff that *moves* an existing endpoint means this slice took a path another one
 was already using.
 
+One benign exception: adding the **first** parameter to a previously
+parameter-less operation makes FastAPI emit a `422` response for it that was
+not there before. A view route picks up its first parameter from
+`X-Position-AtLeast` alone, so a collection view with no path or query
+parameters gains a 422 the moment it adopts the position contract. That is
+generated, correct, and not a collision — do not try to suppress it.
+
 ### Choosing a durable backend
 
 **This lifespan is the one place the backend is chosen.** The bare
@@ -1051,6 +1145,7 @@ src/snake_case({ProjectName})/
     main.py                                               # EDITED, not created — router, view, supervisor registration, /healthz
     projection.py                                         # SHARED RUNTIME — SharedAppProjectionRunner + ProjectionSupervisor (create ONLY if absent; never per-slice)
     telemetry.py                                          # SHARED RUNTIME — verified in Step 0; supplies `consumer_span`, never written per-slice
+    view.py                                               # SHARED RUNTIME — verified in Step 0; the position helpers routes.py imports
 src/snake_case({ProjectName})/snake_case({Context})/
     events.py                                             # shared event Decisions (add new types here; do not remove existing ones)
 src/snake_case({ProjectName})/snake_case({Context})/snake_case({SliceName})/
