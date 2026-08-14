@@ -132,3 +132,26 @@ def test_course_catalogue_lists_multiple_independent_courses(
     assert response.status_code == 200
     course_ids = {entry["course_id"] for entry in response.json()["courses"]}
     assert course_ids == {_FIRST_COURSE_ID, _SECOND_COURSE_ID}
+
+
+def test_course_catalogue_reports_its_position(
+    client: TestClient,
+    first_course_registered: CourseRegistered,  # noqa: ARG001
+) -> None:
+    """A successful query reports the position the view reflects."""
+    response = client.get("/course-catalogue")
+    assert response.status_code == 200
+    assert int(response.headers["X-Current-Position"]) >= 1
+
+
+def test_course_catalogue_reports_too_early_when_behind(
+    client: TestClient,
+    first_course_registered: CourseRegistered,  # noqa: ARG001
+) -> None:
+    """A precondition the view cannot meet is answered with 425, not stale data."""
+    response = client.get(
+        "/course-catalogue",
+        headers={"X-Position-AtLeast": "1000000"},
+    )
+    assert response.status_code == 425
+    assert response.content == b""

@@ -61,3 +61,26 @@ def test_student_course_subscriptions_isolates_other_students(
     body = response.json()
     assert body["subscription_count"] == 0
     assert body["courses"] == []
+
+
+def test_student_course_subscriptions_reports_its_position(
+    client: TestClient,
+    subscribed_to_a_course: StudentSubscribed,  # noqa: ARG001
+) -> None:
+    """A successful query reports the position the view reflects."""
+    response = client.get(f"/students/{_STUDENT_ID}/course-subscriptions")
+    assert response.status_code == 200
+    assert int(response.headers["X-Current-Position"]) >= 1
+
+
+def test_student_course_subscriptions_reports_too_early_when_behind(
+    client: TestClient,
+    subscribed_to_a_course: StudentSubscribed,  # noqa: ARG001
+) -> None:
+    """A precondition the view cannot meet is answered with 425, not stale data."""
+    response = client.get(
+        f"/students/{_STUDENT_ID}/course-subscriptions",
+        headers={"X-Position-AtLeast": "1000000"},
+    )
+    assert response.status_code == 425
+    assert response.content == b""

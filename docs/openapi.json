@@ -264,6 +264,27 @@
       "get": {
         "description": "Return every registered course with its capacity and subscription count.",
         "operationId": "course_catalogue",
+        "parameters": [
+          {
+            "description": "Answer only once the view has reached at least this position.",
+            "in": "header",
+            "name": "X-Position-AtLeast",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Answer only once the view has reached at least this position.",
+              "title": "X-Position-Atleast"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -273,7 +294,36 @@
                 }
               }
             },
-            "description": "Successful Response"
+            "description": "Successful Response",
+            "headers": {
+              "X-Current-Position": {
+                "description": "Position of the last event this view reflects. Absent when the view has processed nothing.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "425": {
+            "description": "The view has not reached X-Position-AtLeast.",
+            "headers": {
+              "X-Current-Position": {
+                "description": "Position of the last event this view reflects. Absent when the view has processed nothing.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Course Catalogue",
@@ -464,6 +514,25 @@
               "title": "Student Id",
               "type": "string"
             }
+          },
+          {
+            "description": "Answer only once the view has reached at least this position.",
+            "in": "header",
+            "name": "X-Position-AtLeast",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Answer only once the view has reached at least this position.",
+              "title": "X-Position-Atleast"
+            }
           }
         ],
         "responses": {
@@ -475,7 +544,15 @@
                 }
               }
             },
-            "description": "Successful Response"
+            "description": "Successful Response",
+            "headers": {
+              "X-Current-Position": {
+                "description": "Position of the last event this view reflects. Absent when the view has processed nothing.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
           },
           "422": {
             "content": {
@@ -486,6 +563,17 @@
               }
             },
             "description": "Validation Error"
+          },
+          "425": {
+            "description": "The view has not reached X-Position-AtLeast.",
+            "headers": {
+              "X-Current-Position": {
+                "description": "Position of the last event this view reflects. Absent when the view has processed nothing.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Student Course Subscriptions",
