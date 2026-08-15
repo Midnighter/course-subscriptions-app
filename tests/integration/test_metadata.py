@@ -86,12 +86,12 @@ def test_a_command_records_the_requests_correlation_id(
 ) -> None:
     """The id seeded at ingress lands on the events the route's command writes."""
     response = client.post(
-        "/students/register",
+        "/webhooks/student-registered",
         json={"student_id": _STUDENT_ID, "name": "Anna Müller", "course_limit": 2},
         headers={CORRELATION_ID_HEADER: "corr-1"},
     )
 
-    assert response.status_code == status.HTTP_201_CREATED, response.text
+    assert response.status_code == status.HTTP_202_ACCEPTED, response.text
     event_id = UUID(response.json()["event_ids"][0])
     recorded = next(env for env in dcb_app.events.read() if env.uuid == event_id)
     assert recorded.metadata[CORRELATION_ID_KEY] == "corr-1"

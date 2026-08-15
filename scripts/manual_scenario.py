@@ -90,9 +90,9 @@ def register_student(
     student_id: str,
     course_limit: int,
 ) -> httpx2.Response:
-    """Register a student with the given course limit."""
+    """Deliver a registrar webhook reporting a student with the given course limit."""
     return client.post(
-        "/students/register",
+        "/webhooks/student-registered",
         json={
             "student_id": student_id,
             "name": f"Student {student_id}",
@@ -187,18 +187,18 @@ def main() -> int:
             label="re-register course A",
         )
 
-        # register_student: success, and a duplicate submission is still
-        # accepted (the route is unconditional; the internal
+        # register_student: 202 accepted, and a redelivery is still accepted
+        # (the webhook is unconditional; the internal
         # student_already_registered guard lives in the automation, not here)
         for student_id in (STUDENT_1, STUDENT_2, STUDENT_3):
             expect(
                 register_student(client, student_id, 1),
-                201,
+                202,
                 label=f"register {student_id} (course_limit 1)",
             )
         expect(
             register_student(client, STUDENT_1, 1),
-            201,
+            202,
             label="re-register student 1 (accepted; automation absorbs the duplicate)",
         )
 

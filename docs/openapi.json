@@ -128,30 +128,6 @@
         "title": "RegisterCourseRequest",
         "type": "object"
       },
-      "RegisterStudentRequest": {
-        "description": "Request body for the External Register Student command.",
-        "properties": {
-          "course_limit": {
-            "title": "Course Limit",
-            "type": "integer"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "student_id": {
-            "title": "Student Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "student_id",
-          "name",
-          "course_limit"
-        ],
-        "title": "RegisterStudentRequest",
-        "type": "object"
-      },
       "StudentCourseSubscriptionsResponse": {
         "description": "Response body for the Student Course Subscriptions query.",
         "properties": {
@@ -182,6 +158,30 @@
           "courses"
         ],
         "title": "StudentCourseSubscriptionsResponse",
+        "type": "object"
+      },
+      "StudentRegisteredWebhook": {
+        "description": "Payload of a Student Registered notification from the registrar.",
+        "properties": {
+          "course_limit": {
+            "title": "Course Limit",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "student_id": {
+            "title": "Student Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "student_id",
+          "name",
+          "course_limit"
+        ],
+        "title": "StudentRegisteredWebhook",
         "type": "object"
       },
       "SubscribeStudentRequest": {
@@ -456,51 +456,6 @@
         "summary": "Healthz"
       }
     },
-    "/students/register": {
-      "post": {
-        "description": "Record an external student registration, triggering the automation.",
-        "operationId": "external_register_student",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RegisterStudentRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CommandResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "204": {
-            "description": "The command recorded nothing."
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "External Register Student",
-        "tags": [
-          "students"
-        ]
-      }
-    },
     "/students/{student_id}/course-subscriptions": {
       "get": {
         "description": "Return a student's current course subscriptions.",
@@ -691,6 +646,51 @@
         "summary": "Unsubscribe Student",
         "tags": [
           "students"
+        ]
+      }
+    },
+    "/webhooks/student-registered": {
+      "post": {
+        "description": "Record a student registration reported by the registrar.",
+        "operationId": "external_register_student",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudentRegisteredWebhook"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "204": {
+            "description": "The command recorded nothing."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "External Register Student",
+        "tags": [
+          "webhooks"
         ]
       }
     }

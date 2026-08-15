@@ -12,20 +12,23 @@ from course_subscriptions.course_subscriptions.external_register_student.slice i
     ExternalRegisterStudentSlice,
 )
 
-router = APIRouter(tags=["students"])
+router = APIRouter(tags=["webhooks"])
 
 
-class RegisterStudentRequest(BaseModel):
-    """Request body for the External Register Student command."""
+class StudentRegisteredWebhook(BaseModel):
+    """Payload of a Student Registered notification from the registrar."""
 
     student_id: str
     name: str
     course_limit: int
 
 
+# 202, not 201: this records the *external* event. The domain's own Register
+# Student command is issued afterwards by the automation that follows it, so
+# when this response goes out the student is not registered here yet.
 @router.post(
-    "/students/register",
-    status_code=status.HTTP_201_CREATED,
+    "/webhooks/student-registered",
+    status_code=status.HTTP_202_ACCEPTED,
     response_model=CommandResponse,
     operation_id="external_register_student",
     responses={
@@ -33,10 +36,10 @@ class RegisterStudentRequest(BaseModel):
     },
 )
 async def external_register_student(
-    body: RegisterStudentRequest,
+    body: StudentRegisteredWebhook,
     app: Annotated[CourseSubscriptionsApp, Depends(get_application)],
 ) -> CommandResponse | Response:
-    """Record an external student registration, triggering the automation."""
+    """Record a student registration reported by the registrar."""
     slice_ = app.do(ExternalRegisterStudentSlice(**body.model_dump()))
     if slice_.outcome.position is None:
         return Response(status_code=status.HTTP_204_NO_CONTENT)

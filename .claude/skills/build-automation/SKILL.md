@@ -140,6 +140,13 @@ Two automation-specific constraints that build-state-change will not tell you:
 
 - **Do NOT create a `routes.py`** for the automation itself — it is not driven over HTTP.
   (The command slice may still have one if the model also exposes it to users.)
+- **The slice that emits the *trigger* event is a webhook ingress, and is addressed as
+  one.** When the trigger comes from outside, its route records an external event rather
+  than running a command — the domain's own command is what *this* automation fires,
+  downstream. build-state-change builds that route; its step 3 covers the shape
+  (`POST /webhooks/{external-event}`, tagged `webhooks`, answering 202). Do not let the
+  slice's name decide: an external slice called `ExternalRegisterStudent` reads like a
+  command, while the element actually crossing the wire is the event `Student Registered`.
 - **The command slice's boundary must be satisfiable from the trigger event alone.** The
   automation has no request body to fall back on: whatever `consistency_boundary()`
   selects on has to be reconstructible from the fields the trigger carries.
