@@ -18,7 +18,7 @@ from course_subscriptions.view import (
     view_headers,
 )
 
-router = APIRouter(tags=["student_course_subscriptions"])
+router = APIRouter(tags=["students"])
 
 
 class StudentCourseSubscriptionsResponse(BaseModel):

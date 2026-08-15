@@ -536,7 +536,7 @@ from snake_case({ProjectName}).view import (
     view_headers,
 )
 
-router = APIRouter(tags=["snake_case({SliceName})"])
+router = APIRouter(tags=["dogs"])  # the entity, pluralised — see SKILL.md step 5
 
 
 def get_snake_case({SliceName})_view(request: Request) -> {SliceName}View:
@@ -551,9 +551,10 @@ class {EntryName}Response(BaseModel):
     field2: int
 
 
-# The path and the id parameter are the *worked example* (`ViewDogProfile` over
-# `tags=[f"dog:{dog_id}"]`), not placeholder tokens — substitute the entity and
-# situation you settled on in `SKILL.md` → *Addressing the view*.
+# The router tag above, and the path and the id parameter below, are the *worked
+# example* (`ViewDogProfile` over `tags=[f"dog:{dog_id}"]`), not placeholder
+# tokens — substitute the entity and situation you settled on in `SKILL.md` →
+# *Addressing the view*.
 @router.get(
     "/dogs/{dog_id}/profile",
     response_model=list[{EntryName}Response],
@@ -592,8 +593,9 @@ Notes on the template:
   function constructs per call.
 - **The router carries no `prefix`; the full path goes on the decorator.** One
   greppable path string per slice and no path parameter hidden in a prefix. The
-  slice name lives on in `tags=` and `operation_id=`, which is what links the
-  endpoint back to the slice in the generated spec. Regenerate it with
+  slice name lives on in `operation_id=`, which is what links the endpoint back
+  to the slice in the generated spec; `tags=` groups the endpoint by entity
+  instead, and is deliberately shared with other slices. Regenerate it with
   `hatch run docs:openapi` once the router is wired in (Step 7).
 - **The path parameter takes the entity's own name** (`dog_id`), not a generic
   `entity_id`. The view's internal `get_entries(...)` interface is unaffected —

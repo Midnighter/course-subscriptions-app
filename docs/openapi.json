@@ -328,7 +328,7 @@
         },
         "summary": "Course Catalogue",
         "tags": [
-          "course_catalogue"
+          "courses"
         ]
       }
     },
@@ -373,7 +373,7 @@
         },
         "summary": "Register Course",
         "tags": [
-          "register_course"
+          "courses"
         ]
       }
     },
@@ -429,7 +429,7 @@
         },
         "summary": "Change Course Capacity",
         "tags": [
-          "change_course_capacity"
+          "courses"
         ]
       }
     },
@@ -497,7 +497,7 @@
         },
         "summary": "External Register Student",
         "tags": [
-          "external_register_student"
+          "students"
         ]
       }
     },
@@ -578,7 +578,7 @@
         },
         "summary": "Student Course Subscriptions",
         "tags": [
-          "student_course_subscriptions"
+          "students"
         ]
       }
     },
@@ -634,7 +634,7 @@
         },
         "summary": "Subscribe Student",
         "tags": [
-          "subscribe_student"
+          "students"
         ]
       }
     },
@@ -690,7 +690,7 @@
         },
         "summary": "Unsubscribe Student",
         "tags": [
-          "unsubscribe_student"
+          "students"
         ]
       }
     }

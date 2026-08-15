@@ -112,7 +112,7 @@ from snake_case({ProjectName}).view import (
     view_headers,
 )
 
-router = APIRouter(tags=["snake_case({SliceName})"])
+router = APIRouter(tags=["dogs"])  # the entity, pluralised — see SKILL.md step 5
 
 
 class {SliceName}Response(BaseModel):
@@ -123,9 +123,10 @@ class {SliceName}Response(BaseModel):
     field2: int
 
 
-# The path and the id parameter are the *worked example* (`ViewDogProfile` over
-# `tags=[f"dog:{dog_id}"]`), not placeholder tokens — substitute the entity and
-# situation you settled on in `SKILL.md` → *Addressing the view*.
+# The router tag above, and the path and the id parameter below, are the *worked
+# example* (`ViewDogProfile` over `tags=[f"dog:{dog_id}"]`), not placeholder
+# tokens — substitute the entity and situation you settled on in `SKILL.md` →
+# *Addressing the view*.
 @router.get(
     "/dogs/{dog_id}/profile",
     response_model={SliceName}Response,
@@ -167,7 +168,7 @@ Notes on the template:
 - **The 425 comes before the 404.** A caller polling for the entity it just created would otherwise be told the entity does not exist and stop.
 - **All three responses carry the position.** The injected `response: Response` covers the 200 only — its headers are discarded when the handler raises or returns a `Response` of its own, which is why the 404 passes `headers=` to `HTTPException` and `too_early()` builds its own. `view_headers()` also emits `Cache-Control: no-store`; that is required, not tidiness (`.build-kit/CLAUDE.md` → *View positions*).
 - **`response_model=` must stay explicit on the decorator.** The return annotation is a union with `Response`, which FastAPI cannot derive a schema from, so the success schema has to be declared — the same reason command routes declare it. The view class is a `Slice`, not a `BaseModel`: map its attributes onto a Pydantic response model explicitly.
-- **The router carries no `prefix`; the full path goes on the decorator.** One greppable path string per slice and no path parameter hidden in a prefix. The slice name lives on in `tags=` and `operation_id=`, which is what links the endpoint back to the slice in the generated spec.
+- **The router carries no `prefix`; the full path goes on the decorator.** One greppable path string per slice and no path parameter hidden in a prefix. The slice name lives on in `operation_id=`, which is what links the endpoint back to the slice in the generated spec; `tags=` groups the endpoint by entity instead, and is deliberately shared with other slices.
 - **The path parameter takes the entity's own name** (`dog_id`), not a generic `entity_id`. The internal `{SliceName}View(entity_id=…)` keyword is unaffected — that is the projection's own interface, not the public one.
 - **Regenerate the spec once the route is wired in** (Step 7): `hatch run docs:openapi`, then stage `docs/openapi.json` with the rest of the slice.
 

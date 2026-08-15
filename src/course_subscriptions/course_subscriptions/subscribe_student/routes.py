@@ -12,7 +12,7 @@ from course_subscriptions.course_subscriptions.subscribe_student.slice import (
     SubscribeStudentSlice,
 )
 
-router = APIRouter(tags=["subscribe_student"])
+router = APIRouter(tags=["students"])
 
 
 class SubscribeStudentRequest(BaseModel):

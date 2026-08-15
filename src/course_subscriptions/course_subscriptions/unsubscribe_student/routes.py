@@ -12,7 +12,7 @@ from course_subscriptions.course_subscriptions.unsubscribe_student.slice import 
     UnsubscribeStudentSlice,
 )
 
-router = APIRouter(tags=["unsubscribe_student"])
+router = APIRouter(tags=["students"])
 
 
 class UnsubscribeStudentRequest(BaseModel):

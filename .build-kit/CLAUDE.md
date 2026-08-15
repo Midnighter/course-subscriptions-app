@@ -363,7 +363,12 @@ That is what makes an address checkable: a route whose entity segment disagrees 
 - **`{entities}`** — the boundary tag's kind, pluralised, kebab-case.
 - **`{intention}`** — the command's verb nominalised to a plural noun of intent: cancel → `cancellation-requests`, register → `registrations`, approve → `approvals`, withdraw → `withdrawal-requests`, book → `booking-requests`. Where the nominalisation is awkward, fall back to `{verb}-requests`.
 - **`{situation}`** — what the reader is looking at, not what the projection is called: `profile`, `itinerary`, `upcoming-arrivals`, `cancellation-context`. `ViewDogProfile` is the slice; `profile` is the situation.
-- **The slice name still has to be traceable, so it moves to the OpenAPI metadata** — `tags=["snake_case({SliceName})"]` on the router and an explicit `operation_id="snake_case({SliceName})"` on the route. The generated spec is what links an endpoint back to the slice that built it.
+- **The OpenAPI tag names the entity, never the slice** — `tags=["{entities}"]` on the router, reusing the same pluralised, kebab-case entity kind as the path's `{entities}` segment. A tag is the only grouping a reader of `/docs` or a generated client gets, so one tag per slice groups nothing: it renders as a flat list of one-endpoint sections in build order. Tagging by entity puts every command and every view over a course under `courses`, whichever slice built it.
+  - For a root-level `POST /{intention}` the entity is the one the command **creates** — `POST /course-registrations` is tagged `courses`, not `course-registrations`.
+  - For a collection view it is what the collection is **of** — `GET /course-catalogue` is tagged `courses`.
+  - So the tag is *not* "the first path segment". It is the boundary tag's kind, which only coincides with the first segment in the nested case.
+  - A genuinely global boundary (`tags=[]`) still has a subject; tag it with that. If no entity can be named, the slice is probably mis-scoped.
+- **The slice name still has to be traceable, so it lives in `operation_id`** — an explicit `operation_id="snake_case({SliceName})"` on the route. That, not the tag, is what links an endpoint back to the slice that built it in the generated spec.
 - **The full path goes on the decorator; the router carries no `prefix`.** One greppable path string per slice, no path parameters hidden in a prefix, and no trailing-slash wart.
 - **The entity id is a path parameter, not a body field**, whenever the command is nested under an entity. Drop it from the request model and pass it alongside: `{SliceName}Slice(licence_id=licence_id, **body.model_dump())`.
 - **Operational routes are exempt.** `/healthz` and anything like it is infrastructure, not domain — leave it flat.

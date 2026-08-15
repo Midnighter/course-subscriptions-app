@@ -12,7 +12,7 @@ from course_subscriptions.course_subscriptions.external_register_student.slice i
     ExternalRegisterStudentSlice,
 )
 
-router = APIRouter(tags=["external_register_student"])
+router = APIRouter(tags=["students"])
 
 
 class RegisterStudentRequest(BaseModel):

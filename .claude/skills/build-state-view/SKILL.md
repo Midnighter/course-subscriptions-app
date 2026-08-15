@@ -110,7 +110,9 @@ SearchAvailableStays (no single entity)        ->  GET /available-stays?from=…
 
 4. **Check the path is free.** `grep` it in `docs/openapi.json` — the committed spec is the source of truth for what already exists (`.build-kit/CLAUDE.md` → *The OpenAPI spec is the source of truth*). Two views over the same entity are fine and expected (`/dogs/{dog_id}/profile` and `/dogs/{dog_id}/history`); two views on the *same path* are a bug.
 
-The slice name still has to be traceable, so it moves into the OpenAPI metadata: `tags=["snake_case({SliceName})"]` on the router and `operation_id="snake_case({SliceName})"` on the route.
+5. **Tag the router with the entity, not the slice** — `tags=["dogs"]`, the same pluralised kebab-case kind you took from the boundary tags in step 1. That is what groups this view with every command and every other view over the same entity in `/docs`; a per-slice tag renders a flat list of one-endpoint sections. A collection view has no entity in its path but still has one as its **subject** — `GET /course-catalogue` is tagged `courses`, not `course-catalogue`. Reuse the exact spelling an existing slice already uses for that entity — `grep '"tags"' docs/openapi.json` — or the two render as separate groups.
+
+The slice name still has to be traceable, so it moves into `operation_id="snake_case({SliceName})"` on the route. That, not the tag, is what links the endpoint back to the slice that built it.
 
 ---
 

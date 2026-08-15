@@ -12,7 +12,7 @@ from course_subscriptions.course_subscriptions.change_course_capacity.slice impo
     ChangeCourseCapacitySlice,
 )
 
-router = APIRouter(tags=["change_course_capacity"])
+router = APIRouter(tags=["courses"])
 
 
 class ChangeCourseCapacityRequest(BaseModel):
