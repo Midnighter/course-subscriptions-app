@@ -48,7 +48,7 @@ OpenTelemetry covers three seams the library gives no help with: the command pat
 - **Only write `traceparent` when the carrier is non-empty after `inject()`.** Under a no-op tracer the span context is invalid and `inject()` writes nothing; don't turn that into a `{"traceparent": None}` entry.
 - **On extract, guard `span_ctx.is_valid` before building a `Link`.** Events written while telemetry was off carry no traceparent, and events replayed by `drain()` may link to traces already outside the retention window — neither is a bug.
 - **`process_event` spans are links, never children.** Two independent reasons: the producing span ended long before (often minutes), and `BaseProjectionRunner`'s processing thread is a bare `threading.Thread`, which does **not** inherit contextvars — so ambient propagation is not merely wrong here, it is impossible. Use `SpanKind.CONSUMER` with a `Link`, per the OTel messaging conventions for temporally decoupled producers and consumers.
-- **Instrumentation must never swallow an exception.** A span context manager that suppresses is the blanket `try/except` around `process_event` wearing a different hat: it advances past a poison event and diverges the view from the log permanently while `/healthz` still reports 200. Record the exception on the span and **re-raise**, so the supervisor still sees the thread die.
+- **Instrumentation must never swallow an exception.** A span context manager that suppresses is the blanket `try/except` around `process_event` wearing a different hat: it advances past a poison event and diverges the view from the log permanently while `/livez` and `/readyz` both still report 200. Record the exception on the span and **re-raise**, so the supervisor still sees the thread die.
 - **Guard `None` in metrics.** `recorder.head()` and `max_tracking_id()` both return `int | None`. Before a projection has processed anything its lag is *undefined*, not zero — skip the observation rather than reporting a fake backlog.
 - **Both spans set a `correlation_id` attribute** — `command_span` off the context, `consumer_span` off the envelope, since the projection thread inherits no contextvars. That makes traces and the event log **joinable in both directions** without either becoming the other's source of truth. See *Event metadata*.
 - **`opentelemetry-api` is a required dependency; only the *SDK* belongs to the `telemetry` extra, and the `dev` env alone.** Split them deliberately: `telemetry.py` and the `do()` override import from the API at module scope, so an API that is merely optional breaks every suite at import time — the no-op path is an API-level proxy to `NoOpTracer` and still needs the API installed. Put `opentelemetry-api` in `[project] dependencies` and **not** in the extra as well; listing it in both lets the extra pin or reinstall it independently of the base requirement. The extra holds sdk/exporter/instrumentation only. The test suites deliberately do not install *that*, so they exercise the no-op path. Don't add the SDK to a test env to assert on spans; construct an in-memory provider inside the test instead.
@@ -97,7 +97,7 @@ The shared runtime is these eight modules under `src/snake_case({ProjectName})/`
 
 Each is written **once** per project and is never a per-slice artefact. `projection.py` is the one deferred to first use, because it is dead code in a project with no projection — but Step 0 still checks for it, and a projection slice that finds it missing creates it before the slice, not alongside it.
 
-The `/healthz` route is deferred on the same terms: the slice that registers the **first** supervisor adds it to `create_app()`, whatever that slice's type. It has nothing to report until a supervisor exists, and a supervisor without it is a projection that can die unobserved. See *Supervising projections* → *The `/healthz` route*.
+The `/livez` and `/readyz` routes are deferred on the same terms: the slice that registers the **first** supervisor adds them, whatever that slice's type. They have nothing to report until a supervisor exists, and a supervisor without them is a projection that can die unobserved. See *Supervising projections* → *The `/livez` and `/readyz` routes*.
 
 The order below matters: `telemetry.py` imports `CommandSlice` from `command.py` and `CORRELATION_ID_KEY` from `metadata.py`, `application.py` imports `command_metadata` from `metadata.py` and `command_span` from `telemetry.py`, `main.py` imports `MetadataMiddleware` from `metadata.py`, and `view.py` imports `{ProjectName}App` from `application.py`. `metadata.py` imports nothing of the project's own, which is why it can come this early.
 
@@ -383,7 +383,7 @@ That is what makes an address checkable: a route whose entity segment disagrees 
 - **The slice name still has to be traceable, so it lives in `operation_id`** — an explicit `operation_id="snake_case({SliceName})"` on the route. That, not the tag, is what links an endpoint back to the slice that built it in the generated spec.
 - **The full path goes on the decorator; the router carries no `prefix`.** One greppable path string per slice, no path parameters hidden in a prefix, and no trailing-slash wart.
 - **The entity id is a path parameter, not a body field**, whenever the command is nested under an *existing* entity. Drop it from the request model and pass it alongside: `{SliceName}Slice(licence_id=licence_id, **body.model_dump())`. A creating command is the exception noted above.
-- **Operational routes are exempt.** `/healthz` and anything like it is infrastructure, not domain — leave it flat.
+- **Operational routes are exempt from the entity scheme, but not from tagging.** `/livez`, `/readyz` and anything like them are infrastructure, not domain — leave the path flat and tag them `infrastructure`, so `/docs` and generated clients group them apart from the domain surface rather than scattering them untagged.
 
 **Never let a literal segment sit where a path parameter could match it.** Starlette walks the route table in registration order and serves the **first full match**, so `GET /courses/{course_id}` registered before `GET /courses/catalogue` swallows every catalogue request and answers it from the *detail* handler with `course_id="catalogue"` — a 404 from the wrong route, with no warning at import time and no error in the log. Nothing in this kit enforces an ordering, and `include_router` lines are appended per slice, so the safe order today is an accident of build order rather than a property anyone maintains.
 
@@ -456,40 +456,65 @@ One unhandled exception in `process_event` **permanently kills** the processing 
 - **One process-wide `ProjectionSupervisor`** owns a single watchdog thread over every registered projection. It probes with `run_forever(timeout=0)` (non-blocking; re-raises the stored error) and rebuilds dead runners via the registered factory.
 - **A restart resumes where the dead runner stopped.** Tracking is committed atomically with each view mutation, so a fresh runner over the same view subscribes at `max_tracking_id` — no loss, no replay from zero.
 - **Count restarts by position, not by count.** If `max_tracking_id` advanced since the last death the projection made progress, so reset the counter; unchanged means the same poison event, so increment. Without this, unrelated transient faults accumulate and eventually stop a healthy projection for good.
-- **Past `max_restarts`, stop and report.** The runner stays dead and surfaces in `supervisor.failures()`, which `/healthz` turns into a 503. A view frozen at a known position is honest; one that skipped an event is silently wrong forever.
+- **Past `max_restarts`, stop and report.** The runner stays dead and surfaces in `supervisor.failures()`, which both `/livez` and `/readyz` turn into a 503. A view frozen at a known position is honest; one that skipped an event is silently wrong forever.
 - **Do not wrap `process_event` in a blanket `try/except`.** Swallowing an event and advancing past it diverges the view from the log permanently while health checks still report 200. Automations keep their targeted guard around the *command port* (`_fire`), where the lingering ledger entry is itself the signal — which only holds while entries linger for one reason, so `_fire` discards the entry when the command's own idempotency guard says the work already landed.
 - **The watchdog is a thread, not an asyncio task,** because tearing a runner down makes two unbounded `Thread.join()` calls and may block on a dead database socket. On the event loop that would stall every request; on a thread it degrades one projection.
-- **`/healthz` reports; it never restarts.** Recovery is the supervisor's job, so health checks stay free of side effects.
+- **Health routes report; they never restart.** Recovery is the supervisor's job, so health checks stay free of side effects. Expose the watchdog's own liveness as `is_watching()` alongside `failures()` — a supervisor that has stopped watching is invisible to `failures()` by construction.
 
-#### The `/healthz` route
+#### The `/livez` and `/readyz` routes
 
-**The slice that registers the first supervisor also adds this route** — whichever slice type it happens to be. A supervisor with no health surface is the failure it exists to prevent: past `max_restarts` the runner stays dead, and without this the process answers every request happily while the view sits frozen. If an earlier slice already added it, leave it exactly as it is.
+**The slice that registers the first supervisor also adds these routes** — whichever slice type it happens to be. A supervisor with no health surface is the failure it exists to prevent: past `max_restarts` the runner stays dead, and without this the process answers every request happily while the view sits frozen. If an earlier slice already added them, leave them exactly as they are.
 
-It goes in `create_app()` in `src/snake_case({ProjectName})/main.py`, after the `include_router` lines. There is no module-level `app` to decorate.
+**They are two routes, not one, because an orchestrator asks two questions with two different remedies.** A single probe answers both and so answers neither actionably.
+
+| | `/livez` | `/readyz` |
+|---|---|---|
+| Event store unreachable | 200 | 503 — `event_store` |
+| A projection's own store unreachable | 200 | 503 — `view:<name>` |
+| Terminal projection failure (`supervisor.failures()`) | 503 | 503 — `<name>` |
+| Watchdog thread dead | 503 | 200 |
+
+- **`/livez` — "restart me."** Only unrecoverable in-process state: a runner past `max_restarts` (a fresh process rebuilds it from `max_tracking_id`, so a restart *is* the recovery), or a watchdog thread that has died (nothing will restart a projection from here on, and `failures()` stays empty through the rot because nothing is left to observe a death). It never touches any store.
+- **`/readyz` — "drain me."** Whether this instance can serve correct traffic right now: the same terminal failures, plus a live round trip to the event store *and to every registered projection's store*. Restarting a replica does not bring a store back, and a restart loop across every replica during an outage is strictly worse than every replica sitting unready.
+- **What makes `/livez`'s store-blindness honest is the remedy, not a startup handshake.** Do **not** add a reachability probe to the lifespan: a backend that cannot open its store already raises out of `{ProjectName}App()`, so a misconfigured URI fails startup without one, and the only thing a retry loop there buys is a boot-ordering window a container restart already provides. Liveness covers in-process rot a restart fixes; a dependency outage is not that, whenever it starts.
+- **Probe every registered projection, not a named backend.** Each projection resolves its own infrastructure from a name-scoped environment, so each may hold a connection of its own — and two projections against the same database still get separate pools. Iterate `supervisor.tracking_recorders()` and call `materialized_position(recorder)` on each, deduplicating by `id(getattr(recorder, "datastore", recorder))` so recorders sharing a datastore are one round trip. A new projection is then covered by registering it, with no edit here.
+- **Collect every failure into one 503 body rather than short-circuiting.** An operator reading it during an outage wants the whole list; naming one dependency and stopping reads as "only this one broke". Namespace the projection keys (`view:<name>`) so they cannot collide with the bare names `failures()` uses.
+- **`head()` and `max_tracking_id()` returning `None` is success.** It means the store is reachable and has nothing yet. Only an exception means unreachable — the same `None`-guarding trap as in *Instrumentation*.
+- **Close the response model's `status` field** — `Literal["alive", "ready"]`, not `str`. An open string publishes no contract, so a typo in a return value breaks every generated client with nothing to catch it.
+- **Projection lag is not a readiness condition.** Keep it an observable gauge (below); per-request staleness is already the read side's job via `X-Current-Position` / `X-Position-AtLeast` → 425. A lag threshold is a policy guess that flaps under write bursts and can pull every replica at once during a backlog.
+
+Unlike a single `/healthz`, these no longer fit as closures in `create_app()`: give them their own `src/snake_case({ProjectName})/health.py` with a router, `include_router`'d last, exactly like a slice's.
 
 ```python
-from fastapi import FastAPI, HTTPException, Request, status
+router = APIRouter(tags=["infrastructure"])
 
 
-def create_app() -> FastAPI:
-    """Build the FastAPI application, wiring in every slice's router."""
-    # ... the existing configure_telemetry / instrument_app / include_router lines ...
+def get_supervisor(request: Request) -> ProjectionSupervisor:
+    """Return the process-wide projection supervisor from FastAPI request state."""
+    return request.state.projection_supervisor
 
-    @app.get("/healthz")
-    async def healthz(request: Request) -> dict[str, str]:
-        """Report whether every supervised projection is still running."""
-        failures = request.state.projection_supervisor.failures()
-        if failures:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail={name: str(error) for name, error in failures.items()},
-            )
-        return {"status": "ok"}
 
-    return app
+@router.get("/livez", response_model=HealthResponse, operation_id="livez")
+async def livez(
+    supervisor: Annotated[ProjectionSupervisor, Depends(get_supervisor)],
+) -> HealthResponse:
+    """Report whether this process can still recover on its own."""
+    # ... failures() -> 503, then is_watching() -> 503 ...
+
+
+@router.get("/readyz", response_model=HealthResponse, operation_id="readyz")
+def readyz(  # deliberately sync — see below
+    app: Annotated[{ProjectName}App, Depends(get_application)],
+    supervisor: Annotated[ProjectionSupervisor, Depends(get_supervisor)],
+) -> HealthResponse:
+    """Report whether this instance can serve correct traffic right now."""
+    # ... failures() -> 503, then head() and every registered projection's
+    # tracking recorder, each guarded, collected into one 503 ...
 ```
 
-`request.state.projection_supervisor` is the key the lifespan yields — the route reads the supervisor, never a runner and never a view. `Request` must be imported at runtime, not under `TYPE_CHECKING`, or FastAPI mistakes it for a query parameter and the route 422s; see *FastAPI / Pydantic gotchas*. Being an operational route it keeps a flat path and is exempt from the addressing convention in *API addressing*.
+`request.state.projection_supervisor` is the key the lifespan yields — the route reads the supervisor, never a runner and never a view. `Request`, and any type used in a live `Annotated` parameter annotation, must be imported at runtime rather than under `TYPE_CHECKING`, or FastAPI mistakes `Request` for a query parameter and the route 422s; see *FastAPI / Pydantic gotchas*. Being operational routes they keep flat paths and are exempt from the addressing convention in *API addressing*.
+
+**`readyz` is `def`, not `async def`, on purpose.** Every probe it makes is blocking socket I/O, and on the event loop a hung socket would stall every request in the process — the same reasoning that makes the watchdog a thread rather than a task. FastAPI runs a sync handler in the threadpool, so a hung probe degrades one worker instead. This matters more than it looks: a Postgres tracking read retries internally before giving up, so an unreachable projection store makes this route *slow*, not instantaneous — size the container/pod probe timeout above that, or a clean 503 naming the dependency is replaced by an opaque timeout naming nothing. `livez` stays `async def`; it only reads in-memory state.
 
 Register each view's lag as an observable gauge alongside it. That is the metric distinguishing "healthy" from "running but hopelessly behind", which `failures()` alone cannot tell you:
 

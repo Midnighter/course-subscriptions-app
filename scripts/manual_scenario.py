@@ -167,7 +167,7 @@ def read_view(client: httpx2.Client, url: str) -> httpx2.Response:
 def main() -> int:
     """Run the scenario against BASE_URL and report a pass/fail summary."""
     with httpx2.Client(base_url=BASE_URL) as client:
-        expect(client.get("/healthz"), 200, label="server is up")
+        expect(client.get("/readyz"), 200, label="server is ready")
 
         # register_course: success + course_already_registered
         expect(

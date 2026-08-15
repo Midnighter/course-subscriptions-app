@@ -104,6 +104,24 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HealthResponse": {
+        "description": "Response body for an operational probe.",
+        "properties": {
+          "status": {
+            "enum": [
+              "alive",
+              "ready"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
       "RegisterCourseRequest": {
         "description": "Request body for the Register Course command.",
         "properties": {
@@ -433,27 +451,54 @@
         ]
       }
     },
-    "/healthz": {
+    "/livez": {
       "get": {
-        "description": "Report whether every supervised projection is still running.",
-        "operationId": "healthz_healthz_get",
+        "description": "Report whether this process can still recover on its own.",
+        "operationId": "livez",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "title": "Response Healthz Healthz Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/HealthResponse"
                 }
               }
             },
             "description": "Successful Response"
+          },
+          "503": {
+            "description": "A probed dependency is unavailable; `detail` names each one."
           }
         },
-        "summary": "Healthz"
+        "summary": "Livez",
+        "tags": [
+          "infrastructure"
+        ]
+      }
+    },
+    "/readyz": {
+      "get": {
+        "description": "Report whether this instance can serve correct traffic right now.",
+        "operationId": "readyz",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "description": "A probed dependency is unavailable; `detail` names each one."
+          }
+        },
+        "summary": "Readyz",
+        "tags": [
+          "infrastructure"
+        ]
       }
     },
     "/students/{student_id}/course-subscriptions": {

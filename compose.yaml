@@ -16,6 +16,34 @@ services:
       POSTGRES_PASSWORD: secret
     ports:
       - "8000:8000"
+    # Covers a process that dies outright — an unopenable store at startup, an
+    # OOM kill. It is not what handles a dependency outage: the app stays alive
+    # and reports itself unready, which the healthcheck below picks up, because
+    # restarting a replica brings back neither the event store nor postgres.
+    # Note this service builds `Dockerfile.development`, whose `fastapi dev`
+    # reloader outlives its failed worker, so a startup crash leaves the
+    # container up and only the healthcheck tells the truth; editing the
+    # misconfiguration then reloads it in place. Under the production
+    # `Dockerfile` the same failure exits a bare uvicorn and this policy
+    # restarts it.
+    restart: unless-stopped
+    healthcheck:
+      # `python:slim` carries no curl, hence urllib rather than `curl -f`.
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/readyz').read()",
+        ]
+      interval: 5s
+      # Generous on purpose: /readyz now probes each projection's store as well
+      # as the event store, and a Postgres read retries internally before it
+      # gives up. Too short a timeout would replace a 503 that names the failed
+      # dependency with an opaque healthcheck timeout that names nothing.
+      timeout: 10s
+      retries: 5
+      start_period: 10s
     volumes:
       - .:/app
     depends_on:

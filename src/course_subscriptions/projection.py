@@ -110,6 +110,34 @@ class ProjectionSupervisor:
             if reg.failure is not None
         }
 
+    def tracking_recorders(self) -> dict[str, TrackingRecorder]:
+        """
+        Return each registered projection's tracking recorder, by name.
+
+        These registrations are the only record of which stores this process
+        depends on besides the event store: every projection resolves its own
+        infrastructure from a name-scoped environment, so each may hold a
+        connection of its own. Readiness probes what this returns rather than
+        naming any backend, which is what lets a new projection be covered by
+        registering it and nothing else.
+        """
+        return {
+            name: reg.tracking_recorder for name, reg in self._registrations.items()
+        }
+
+    def is_watching(self) -> bool:
+        """
+        Report whether the watchdog thread is still running.
+
+        Only meaningful between ``__enter__`` and ``__exit__``: before the
+        first the thread has not started, and after the second it has been
+        joined. Routes only serve between those two points, so a false answer
+        there means the watchdog died on its own — no projection will ever be
+        restarted again, and ``failures()`` will stay empty through the rot
+        because nothing is left to observe a death.
+        """
+        return self._watchdog_thread.is_alive()
+
     def _watch(self) -> None:
         while not self._stop_event.wait(timeout=self._poll_interval):
             for reg in self._registrations.values():

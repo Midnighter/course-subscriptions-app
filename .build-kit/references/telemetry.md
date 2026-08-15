@@ -545,8 +545,8 @@ the no-op path, so they need no SDK:
   `TaggedEvent` with `metadata={}` and assert the block runs.
 - **`consumer_span` re-raises** — same shape as
   `test_command_span_does_not_swallow_exceptions`. This is the one that matters: a span
-  that suppressed would let the projection advance past a poison event while `/healthz`
-  still reported 200.
+  that suppressed would let the projection advance past a poison event while `/livez`
+  and `/readyz` both still reported 200.
 
 ---
 

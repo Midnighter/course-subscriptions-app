@@ -8,7 +8,7 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from functools import partial
 from typing import TYPE_CHECKING
 
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI
 
 from course_subscriptions.application import CourseSubscriptionsApp
 from course_subscriptions.course_subscriptions.change_course_capacity import (
@@ -38,6 +38,7 @@ from course_subscriptions.course_subscriptions.subscribe_student import (
 from course_subscriptions.course_subscriptions.unsubscribe_student import (
     routes as unsubscribe_student_routes,
 )
+from course_subscriptions.health import router as health_router
 from course_subscriptions.metadata import MetadataMiddleware
 from course_subscriptions.projection import ProjectionSupervisor
 from course_subscriptions.telemetry import (
@@ -52,12 +53,17 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("uvicorn.error")
 
-
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[dict]:
     """Construct the process-wide application and its projections."""
     async with AsyncExitStack() as stack:
-        dcb_app = stack.enter_context(CourseSubscriptionsApp())  # entered FIRST
+        # Entered FIRST so it closes last: the projections below run over this
+        # store, and tearing it down while a projection thread is still writing
+        # would fail. No reachability probe here — a backend that cannot open
+        # its store raises out of this line, which is the fail-fast we want, and
+        # one that connects lazily is an outage for `/readyz` to report rather
+        # than a reason to refuse to start.
+        dcb_app = stack.enter_context(CourseSubscriptionsApp())
         logger.info("%r", dcb_app.__class__.__name__)
         logger.info("Context name: %r", dcb_app.context_name)
         logger.info("Recorder type: %r", type(dcb_app.recorder))
@@ -104,16 +110,9 @@ def create_app() -> FastAPI:
     app.include_router(register_course_routes.router)
     app.include_router(external_register_student_routes.router)
     app.include_router(course_catalogue_routes.router)
-
-    @app.get("/healthz")
-    async def healthz(request: Request) -> dict[str, str]:
-        """Report whether every supervised projection is still running."""
-        failures = request.state.projection_supervisor.failures()
-        if failures:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail={name: str(error) for name, error in failures.items()},
-            )
-        return {"status": "ok"}
+    # `/livez` and `/readyz` are root-level literals no slice path can shadow,
+    # so this line is safe anywhere in the block; it sits last to keep the
+    # append-only rule above unqualified.
+    app.include_router(health_router)
 
     return app

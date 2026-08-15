@@ -26,7 +26,7 @@ _STUDENT_ID = "STU-2026-0042"
 
 def test_response_echoes_a_minted_correlation_id(client: TestClient) -> None:
     """A request without the header still gets a flow, reported back."""
-    response = client.get("/healthz")
+    response = client.get("/livez")
 
     assert response.status_code == status.HTTP_200_OK
     assert UUID(response.headers[CORRELATION_ID_HEADER])
@@ -34,7 +34,7 @@ def test_response_echoes_a_minted_correlation_id(client: TestClient) -> None:
 
 def test_response_echoes_a_supplied_correlation_id(client: TestClient) -> None:
     """A usable client id is adopted verbatim, so the caller can join on it."""
-    response = client.get("/healthz", headers={CORRELATION_ID_HEADER: "corr-1"})
+    response = client.get("/livez", headers={CORRELATION_ID_HEADER: "corr-1"})
 
     assert response.headers[CORRELATION_ID_HEADER] == "corr-1"
 
@@ -49,7 +49,7 @@ def test_a_hostile_correlation_id_is_replaced(client: TestClient) -> None:
     """
     oversized = "x" * 200
 
-    response = client.get("/healthz", headers={CORRELATION_ID_HEADER: oversized})
+    response = client.get("/livez", headers={CORRELATION_ID_HEADER: oversized})
 
     assert response.headers[CORRELATION_ID_HEADER] != oversized
     assert UUID(response.headers[CORRELATION_ID_HEADER])

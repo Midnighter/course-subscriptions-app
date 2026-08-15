@@ -28,7 +28,7 @@ code-generation time, never carried separately.
 | `{ProjectAuthor}` | `name` from `[project] authors` — copy the exact spelling already used by existing modules | `Moritz E. Beber` |
 | `{YYYY}` | the current year, matching the headers on existing modules | `2026` |
 | `{SliceName}` | the slice title in PascalCase — only used by the automation snippet in §2 | `RegisterStudent` |
-| `{GetPath}` | any GET route the app already serves; `/healthz` once a supervisor exists | `/healthz` |
+| `{GetPath}` | any GET route the app already serves; `/livez` once a supervisor exists — it is the cheapest, making no store call | `/livez` |
 | `{CommandPath}` | any POST route that runs a command through `do()` | `/students/register` |
 | `{CommandBody}` | a valid request body for that route | `{"student_id": "STU-2026-0042", "name": "Anna Müller", "course_limit": 2}` |
 
