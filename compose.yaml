@@ -14,6 +14,19 @@ services:
       POSTGRES_HOST: projections
       POSTGRES_USER: course_app
       POSTGRES_PASSWORD: secret
+      # Bounds /readyz, not just connection setup. This value becomes the pool's
+      # checkout timeout, and `max_tracking_id` — the call the readiness probe
+      # makes — wraps it in an internal `@retry(max_attempts=10, wait=0.2)`, so
+      # the probe's worst case is this number times ten. At the 30s default a
+      # readiness check against a stopped Postgres measured 2m01s: far past the
+      # healthcheck timeout below, so the clean 503 that names the dependency
+      # would be replaced by an opaque timeout that names nothing. Worse, /readyz
+      # is a sync handler, so each such probe pins a threadpool worker for those
+      # two minutes and a 5s interval would eventually starve the seven routes
+      # that still serve fine from the event store. At 1s the same check answers
+      # in 5.8s. Both containers share a Docker network here; a deployment where
+      # Postgres is farther away wants a larger number and a wider timeout below.
+      POSTGRES_CONNECT_TIMEOUT: "1"
     ports:
       - "8000:8000"
     # Covers a process that dies outright — an unopenable store at startup, an
@@ -37,10 +50,12 @@ services:
           "import urllib.request; urllib.request.urlopen('http://localhost:8000/readyz').read()",
         ]
       interval: 5s
-      # Generous on purpose: /readyz now probes each projection's store as well
-      # as the event store, and a Postgres read retries internally before it
-      # gives up. Too short a timeout would replace a 503 that names the failed
-      # dependency with an opaque healthcheck timeout that names nothing.
+      # Generous on purpose: /readyz probes each projection's store as well as
+      # the event store, and a Postgres read retries internally before it gives
+      # up. Too short a timeout would replace a 503 that names the failed
+      # dependency with an opaque healthcheck timeout that names nothing. 10s
+      # clears the 5.8s a stopped-Postgres probe measured under the
+      # POSTGRES_CONNECT_TIMEOUT set above — raise both together or neither.
       timeout: 10s
       retries: 5
       start_period: 10s

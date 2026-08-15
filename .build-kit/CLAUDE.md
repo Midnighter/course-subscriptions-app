@@ -514,7 +514,14 @@ def readyz(  # deliberately sync — see below
 
 `request.state.projection_supervisor` is the key the lifespan yields — the route reads the supervisor, never a runner and never a view. `Request`, and any type used in a live `Annotated` parameter annotation, must be imported at runtime rather than under `TYPE_CHECKING`, or FastAPI mistakes `Request` for a query parameter and the route 422s; see *FastAPI / Pydantic gotchas*. Being operational routes they keep flat paths and are exempt from the addressing convention in *API addressing*.
 
-**`readyz` is `def`, not `async def`, on purpose.** Every probe it makes is blocking socket I/O, and on the event loop a hung socket would stall every request in the process — the same reasoning that makes the watchdog a thread rather than a task. FastAPI runs a sync handler in the threadpool, so a hung probe degrades one worker instead. This matters more than it looks: a Postgres tracking read retries internally before giving up, so an unreachable projection store makes this route *slow*, not instantaneous — size the container/pod probe timeout above that, or a clean 503 naming the dependency is replaced by an opaque timeout naming nothing. `livez` stays `async def`; it only reads in-memory state.
+**`readyz` is `def`, not `async def`, on purpose.** Every probe it makes is blocking socket I/O, and on the event loop a hung socket would stall every request in the process — the same reasoning that makes the watchdog a thread rather than a task. FastAPI runs a sync handler in the threadpool, so a hung probe degrades one worker instead. `livez` stays `async def`; it only reads in-memory state.
+
+**Bound the probe, or the threadpool is no safer than the event loop.** An unreachable projection store makes this route *slow*, not instantaneous, and by a wider margin than it looks: `max_tracking_id` is wrapped in `@retry(max_attempts=10, wait=0.2)`, and each attempt blocks for the connection-pool checkout timeout — `POSTGRES_CONNECT_TIMEOUT`, which defaults to **30s**. The probe's worst case is therefore that timeout times ten. Measured against a stopped Postgres at the default, one `/readyz` call took **2m01s**; at `POSTGRES_CONNECT_TIMEOUT=1` the same call took 5.8s and still named the dependency. Two things break at the default, not one:
+
+- The container probe times out first, so the clean 503 naming the dependency is replaced by an opaque timeout naming nothing.
+- Worse, an orchestrator polling every few seconds stacks probes that each pin a threadpool worker for minutes. The pool is finite (AnyIO defaults to 40), so a *dependency* outage becomes a *total* outage — the routes still serving correctly from the event store queue behind dead probes. That is precisely the failure the liveness/readiness split exists to prevent, reintroduced one layer down.
+
+So set the connect timeout deliberately in deployment config and size the probe timeout above the resulting worst case. Raise them together or neither.
 
 Register each view's lag as an observable gauge alongside it. That is the metric distinguishing "healthy" from "running but hopelessly behind", which `failures()` alone cannot tell you:
 
