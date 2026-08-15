@@ -141,16 +141,47 @@ class ProjectionSupervisor:
     def _watch(self) -> None:
         while not self._stop_event.wait(timeout=self._poll_interval):
             for reg in self._registrations.values():
-                if reg.failure is not None or reg.runner is None:
+                if reg.failure is not None:
                     continue
                 try:
-                    reg.runner.run_forever(timeout=0)
+                    # Rebuilding here rather than in `_handle_failure` puts
+                    # construction inside the guard: a factory that raises is
+                    # a failure to count, not an exception that escapes and
+                    # takes the watchdog with it. The cost is that a restart
+                    # lands one tick later, which doubles as backoff.
+                    if reg.runner is None:
+                        reg.runner = reg.factory()
+                        reg.runner.__enter__()
+                    else:
+                        reg.runner.run_forever(timeout=0)
                 except Exception as exc:  # noqa: BLE001
                     self._handle_failure(reg, exc)
 
     def _handle_failure(self, reg: _Registration, exc: BaseException) -> None:
+        """
+        Record a projection's death. Bookkeeping only — never raises.
+
+        This runs from the `except` block above, so anything it lets escape
+        kills the watchdog thread outright and leaves `failures()` empty
+        forever, because nothing is left to observe a death.
+        """
         logger.error("projection %s died", reg.name, exc_info=exc)
-        position = reg.tracking_recorder.max_tracking_id(self._context_name)
+        self._discard(reg)
+        try:
+            position = reg.tracking_recorder.max_tracking_id(self._context_name)
+        except Exception:
+            # The tracking ledger lives in the very store the runner just
+            # failed to reach, so a dead runner usually means an unreadable
+            # position too. Counting it would burn the restart budget during
+            # an outage and latch a terminal failure that no restart can
+            # clear; this method cannot tell progress from a poison event
+            # without that number, so it reaches no verdict and retries.
+            logger.warning(
+                "projection %s: tracking position unreadable, retrying",
+                reg.name,
+                exc_info=True,
+            )
+            return
         if position != reg.last_position:
             reg.restarts = 0
         reg.last_position = position
@@ -162,9 +193,24 @@ class ProjectionSupervisor:
                 reg.name,
                 reg.max_restarts,
             )
+
+    def _discard(self, reg: _Registration) -> None:
+        """
+        Stop a dead runner and drop it, so `_watch` rebuilds it next tick.
+
+        Stopping it is not tidiness: an unreadable position retries
+        indefinitely, so without this a long outage would build a fresh runner
+        every tick and leak the previous one's two threads each time.
+        `SharedAppProjectionRunner.__exit__` re-raises the error that killed
+        the runner, so this usually raises — swallow it, it is already logged.
+        """
+        runner, reg.runner = reg.runner, None
+        if runner is None:
             return
-        reg.runner = reg.factory()
-        reg.runner.__enter__()
+        try:
+            runner.__exit__(None, None, None)
+        except Exception:
+            logger.debug("projection %s did not stop cleanly", reg.name, exc_info=True)
 
     def __enter__(self) -> Self:
         """Construct and enter every registered runner, then start watching."""
