@@ -24,6 +24,7 @@ Every new Python module must satisfy these before it can be committed:
 - **String exception messages** go into a variable first, then `raise` (`EM101`).
 - **Trailing commas** in multi-line calls / literals (`COM812`).
 - **Imports sorted** — first-party is `src` / the project package name (`I001`).
+- **A forwarding `**kwargs` stays unannotated.** `ANN003` (missing annotation) is in `[tool.ruff.lint] ignore`; annotating it `Any` to "fix" that trips `ANN401` instead, so the module cannot be committed either way. This comes up wherever a subclass forwards constructor arguments it does not name — confirm the ignore is still present before relying on it.
 
 ## FastAPI / Pydantic gotchas
 
@@ -82,7 +83,7 @@ Every recorded event carries three general-purpose keys in `TaggedEvent.metadata
 
 Before the first build skill runs in a new project, check whether the files below exist. If not, create them in this order before proceeding with the skill — the build skills themselves assume all of this is already in place. Every build skill's **Step 0** re-checks this list, so a project that was set up incompletely is repaired at the next slice rather than carried forward.
 
-The shared runtime is these eight modules under `src/snake_case({ProjectName})/`:
+The shared runtime is these nine modules under `src/snake_case({ProjectName})/`:
 
 | Module | Created |
 |---|---|
@@ -94,10 +95,11 @@ The shared runtime is these eight modules under `src/snake_case({ProjectName})/`
 | `view.py` | setup |
 | `main.py` | setup |
 | `projection.py` | the first time a projection slice is built (see *Projection runners*) |
+| `health.py` | the first time a slice registers a **supervisor** (see *Supervising projections*) |
 
-Each is written **once** per project and is never a per-slice artefact. `projection.py` is the one deferred to first use, because it is dead code in a project with no projection — but Step 0 still checks for it, and a projection slice that finds it missing creates it before the slice, not alongside it.
+Each is written **once** per project and is never a per-slice artefact. The last two are deferred to first use, because both are dead code in a project with no projection — but Step 0 still checks for them, and a slice that finds one missing creates it before the slice, not alongside it.
 
-The `/livez` and `/readyz` routes are deferred on the same terms: the slice that registers the **first** supervisor adds them, whatever that slice's type. They have nothing to report until a supervisor exists, and a supervisor without them is a projection that can die unobserved. See *Supervising projections* → *The `/livez` and `/readyz` routes*.
+`health.py` holds the `/livez` and `/readyz` routes, and the slice that registers the **first** supervisor adds it, whatever that slice's type. The routes have nothing to report until a supervisor exists, and a supervisor without them is a projection that can die unobserved. See *Supervising projections* → *The `/livez` and `/readyz` routes*.
 
 The order below matters: `telemetry.py` imports `CommandSlice` from `command.py` and `CORRELATION_ID_KEY` from `metadata.py`, `application.py` imports `command_metadata` from `metadata.py` and `command_span` from `telemetry.py`, `main.py` imports `MetadataMiddleware` from `metadata.py`, and `view.py` imports `{ProjectName}App` from `application.py`. `metadata.py` imports nothing of the project's own, which is why it can come this early.
 
@@ -374,7 +376,7 @@ That is what makes an address checkable: a route whose entity segment disagrees 
   Keep a qualifier when dropping it would collide: if both `AdminCancelLicence` and `CustomerCancelLicence` exist, they are `admin-cancel` and `customer-cancel`, not two routes called `cancel`. Imperative verb, never a gerund or a noun — `cancel`, not `cancelling` or `cancellation`.
 - **A creating command keeps its id in the body.** `POST /courses/register` carries `course_id` as body data even when the client supplies it, because an id for a thing that does not exist yet is not an address. This is the one case where the id is *not* lifted to a path parameter.
 - **`{situation}`** — what the reader is looking at, not what the projection is called: `profile`, `itinerary`, `upcoming-arrivals`, `cancellation-context`. `ViewDogProfile` is the slice; `profile` is the situation.
-- **`{external-event}`** — the *external* event's own name, **past participle**, kebab-case: `student-registered`, `payment-settled`. Not an imperative. Read the board before choosing it: an automation slice fed from outside has an external event upstream of the automation and a command *downstream* of it, so the thing crossing the wire is the event, and the command is ours to issue afterwards. `POST /students/register` states the opposite — that the caller is instructing us and that we may decline — when in fact the registrar has already decided and our only honest answers are "recorded" and "retry me". The endpoint's behaviour already agrees: a redelivery is absorbed, because a sender's retry is not a second registration.
+- **`{external-event}`** — the *external* event's own name, **past participle**, kebab-case: `student-registered`, `payment-settled`. Not an imperative. Read the board before choosing it: an automation slice fed from outside has an external event upstream of the automation and a command *downstream* of it, so the thing crossing the wire is the event, and the command is ours to issue afterwards. `POST /students/register` states the opposite — that the caller is instructing us and that we may decline — when in fact the upstream system has already decided and our only honest answers are "recorded" and "retry me". The endpoint's behaviour has to agree: a redelivery is absorbed, because a sender's retry is not a second registration.
 - **The OpenAPI tag names the entity, never the slice** — `tags=["{entities}"]` on the router, reusing the same pluralised, kebab-case entity kind as the path's `{entities}` segment. A tag is the only grouping a reader of `/docs` or a generated client gets, so one tag per slice groups nothing: it renders as a flat list of one-endpoint sections in build order. Tagging by entity puts every command and every view over a course under `courses`, whichever slice built it.
   - Every **command** path starts with `{entities}`, so for commands the tag is exactly the first path segment — including the creating ones: `POST /courses/register` is tagged `courses`.
   - A **collection view** sits at the root, so its tag is *not* its first segment. Take what the collection is **of**: `GET /course-catalogue` is tagged `courses`.
@@ -516,7 +518,7 @@ def readyz(  # deliberately sync — see below
 
 **`readyz` is `def`, not `async def`, on purpose.** Every probe it makes is blocking socket I/O, and on the event loop a hung socket would stall every request in the process — the same reasoning that makes the watchdog a thread rather than a task. FastAPI runs a sync handler in the threadpool, so a hung probe degrades one worker instead. `livez` stays `async def`; it only reads in-memory state.
 
-**Bound the probe, or the threadpool is no safer than the event loop.** An unreachable projection store makes this route *slow*, not instantaneous, and by a wider margin than it looks: `max_tracking_id` is wrapped in `@retry(max_attempts=10, wait=0.2)`, and each attempt blocks for the connection-pool checkout timeout — `POSTGRES_CONNECT_TIMEOUT`, which defaults to **30s**. The probe's worst case is therefore that timeout times ten. Measured against a stopped Postgres at the default, one `/readyz` call took **2m01s**; at `POSTGRES_CONNECT_TIMEOUT=1` the same call took 5.8s and still named the dependency. Two things break at the default, not one:
+**Bound the probe, or the threadpool is no safer than the event loop.** An unreachable projection store makes this route *slow*, not instantaneous, and by a wider margin than it looks: `max_tracking_id` is wrapped in `@retry(max_attempts=10, wait=0.2)`, and each attempt blocks for the connection-pool checkout timeout — `POSTGRES_CONNECT_TIMEOUT`, which defaults to **30s**. The probe's worst case is therefore **that timeout times ten** — minutes at the default, seconds once the timeout is set low. The shape is what matters; the exact seconds depend on the deployment, so measure them there rather than trusting a number written here. A low timeout still names the dependency in the 503: shortening the probe costs no diagnostic value. Two things break at the default, not one:
 
 - The container probe times out first, so the clean 503 naming the dependency is replaced by an opaque timeout naming nothing.
 - Worse, an orchestrator polling every few seconds stacks probes that each pin a threadpool worker for minutes. The pool is finite (AnyIO defaults to 40), so a *dependency* outage becomes a *total* outage — the routes still serving correctly from the event store queue behind dead probes. That is precisely the failure the liveness/readiness split exists to prevent, reintroduced one layer down.

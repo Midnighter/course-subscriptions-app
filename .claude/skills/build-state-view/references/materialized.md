@@ -377,9 +377,8 @@ class Postgres{SliceName}View(PostgresTrackingRecorder, {SliceName}View):
 The `datastore` argument is supplied by `PostgresFactory.tracking_recorder`,
 which also passes a `tracking_table_name` derived from `Projection.name` and
 calls `create_table()` — so `__init__` must accept and forward `**kwargs`
-rather than fixing its own signature. **Leave `**kwargs` unannotated** — the
-project ignores `ANN003` (missing annotation), but annotating it `Any` trips
-`ANN401` and the module cannot be committed.
+rather than fixing its own signature. **Leave `**kwargs` unannotated**
+(`.build-kit/CLAUDE.md` → *Pre-commit compliance rules*).
 
 **`_insert_tracking` comes first in a mutating method**, before any domain
 statement. It is the Postgres counterpart to POPO's explicit
@@ -480,7 +479,7 @@ projection needs telemetry:
   is no ambient context to be a child *of*. `.build-kit/CLAUDE.md` → *Observability*.
 - **The span must not swallow the exception.** Record it and re-raise. A
   projection that logs an error and advances past a poison event diverges from
-  the log permanently while `/healthz` still reports 200 — the same failure the
+  the log permanently while `/livez` and `/readyz` both still report 200 — the same failure the
   blanket-`try/except` rule already forbids.
 - **Wrapping does not change the tracking rules.** Every branch inside the span
   still persists `tracking`, wildcard included, or `wait()` hangs until timeout.
@@ -596,7 +595,8 @@ Notes on the template:
   slice name lives on in `operation_id=`, which is what links the endpoint back
   to the slice in the generated spec; `tags=` groups the endpoint by entity
   instead, and is deliberately shared with other slices. Regenerate it with
-  `hatch run docs:openapi` once the router is wired in (Step 7).
+  regenerate the spec once the router is wired in (Step 7; `.build-kit/CLAUDE.md`
+  → *The OpenAPI spec is the source of truth*).
 - **The path parameter takes the entity's own name** (`dog_id`), not a generic
   `entity_id`. The view's internal `get_entries(...)` interface is unaffected —
   that is the projection's own API, not the public one.
@@ -1044,16 +1044,15 @@ If the project already has a supervisor (any earlier projection slice built one)
 this slice adds only three lines to the existing lifespan — `create_view()`,
 `supervisor.register(...)`, and one key in the yielded mapping — plus its
 `include_router`. Create `supervisor` and the `AsyncExitStack` only if this is
-the project's first projection — and if you did create them, add `/healthz` in
-the same step (see *Reporting projection health* below). A supervisor without it
-can only report a dead projection to a log nobody is reading.
+the project's first projection — and if you did create them, add `health.py` with
+its `/livez` and `/readyz` routes in the same step (see *Reporting projection
+health* below). A supervisor without them can only report a dead projection to a
+log nobody is reading.
 
 Once the router is included the route exists on the real app, so **regenerate the
-spec and stage it with the slice**:
-
-```
-hatch run docs:openapi     # rewrites docs/openapi.json
-```
+spec and stage it with the slice** — the project's regeneration command is in
+`.build-kit/CLAUDE.md` → *The OpenAPI spec is the source of truth*, and it
+rewrites `docs/openapi.json` in place.
 
 Confirm the diff adds exactly the path you intended and changes nothing else — a
 diff that *moves* an existing endpoint means this slice took a path another one
@@ -1100,11 +1099,12 @@ Registering a supervisor above created the obligation to report on it: past
 `max_restarts` the runner stays dead, and without a health surface the process
 answers every request happily while the view sits frozen.
 
-**The route, its lag gauge and its 503 test are in `.build-kit/CLAUDE.md` →
-*Supervising projections* → *The `/healthz` route*.** Add it there if this slice
-registered the project's **first** supervisor; leave it exactly as it is if an
-earlier slice already did. It reports and never restarts — recovery is the
-supervisor's job, so health checks stay free of side effects.
+**`health.py`, its lag gauge and its 503 test are in `.build-kit/CLAUDE.md` →
+*Supervising projections* → *The `/livez` and `/readyz` routes*.** Add the module
+there if this slice registered the project's **first** supervisor; leave it
+exactly as it is if an earlier slice already did. Both routes report and never
+restart — recovery is the supervisor's job, so health checks stay free of side
+effects.
 
 ---
 
@@ -1151,9 +1151,10 @@ supervisor's job, so health checks stay free of side effects.
 
 ```
 docs/
-    openapi.json                                          # REGENERATED, not hand-written — `hatch run docs:openapi`
+    openapi.json                                          # REGENERATED, not hand-written
 src/snake_case({ProjectName})/
-    main.py                                               # EDITED, not created — router, view, supervisor registration, /healthz
+    main.py                                               # EDITED, not created — router, view, supervisor registration, health.py's router
+    health.py                                             # SHARED RUNTIME — /livez + /readyz; create ONLY if this slice registers the project's first supervisor
     projection.py                                         # SHARED RUNTIME — SharedAppProjectionRunner + ProjectionSupervisor (create ONLY if absent; never per-slice)
     metadata.py                                           # SHARED RUNTIME — verified in Step 0; never written per-slice
     telemetry.py                                          # SHARED RUNTIME — verified in Step 0; supplies `consumer_span`, never written per-slice

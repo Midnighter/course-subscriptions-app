@@ -70,7 +70,7 @@ A slice is built *on* the shared runtime; it never carries a copy of it. Before 
 | `main.py` | ditto — including `configure_telemetry()`, `instrument_app()`, `instrument_recorder()` and `add_middleware(MetadataMiddleware)` |
 | `projection.py` | `.build-kit/CLAUDE.md` → *Projection runners*; **required** by this slice type — see Step 5 |
 | `tests/unit/test_projection.py` | ditto — the upgrade tripwire that pairs with `projection.py`; **its absence is invisible**, since a suite passes just as green without it |
-| `/healthz` in `main.py` | `.build-kit/CLAUDE.md` → *Supervising projections*; required once a supervisor exists, and this slice type registers one |
+| `health.py` | `.build-kit/CLAUDE.md` → *Supervising projections*; holds the `/livez` and `/readyz` routes, required once a supervisor exists, and this slice type registers one |
 
 A missing module is an incomplete setup, not an opt-out — in particular, **do not skip a slice's instrumentation because `telemetry.py` is absent.** Create what is missing, run the test suites, and commit it on its own as a `chore:` **before** starting the slice: a shared-runtime module folded into a `feat:` commit is unreviewable and reads as slice-specific when it is not.
 
@@ -145,8 +145,8 @@ Two automation-specific constraints that build-state-change will not tell you:
   than running a command — the domain's own command is what *this* automation fires,
   downstream. build-state-change builds that route; its step 3 covers the shape
   (`POST /webhooks/{external-event}`, tagged `webhooks`, answering 202). Do not let the
-  slice's name decide: an external slice called `ExternalRegisterStudent` reads like a
-  command, while the element actually crossing the wire is the event `Student Registered`.
+  slice's name decide: an `ExternalRegisterX` slice reads like a command, while the
+  element actually crossing the wire is the event `X Registered`.
 - **The command slice's boundary must be satisfiable from the trigger event alone.** The
   automation has no request body to fall back on: whatever `consistency_boundary()`
   selects on has to be reconstructible from the fields the trigger carries.
@@ -262,9 +262,8 @@ POPO-only project would otherwise have to implement a method that does nothing.
 A Postgres `__init__` takes `(self, datastore: PostgresDatastore, **kwargs)` —
 the factory supplies `datastore` and a `tracking_table_name` derived from
 `Projection.name`, so the signature must forward `**kwargs` rather than fix its
-own. **Leave `**kwargs` unannotated**: the project ignores `ANN003` (missing
-annotation), but annotating it `Any` trips `ANN401` and the module cannot be
-committed.
+own. **Leave `**kwargs` unannotated** (`.build-kit/CLAUDE.md` → *Pre-commit
+compliance rules*).
 
 In both cases the point is the same: **the entry and its `Tracking` must be persisted in
 one atomic step**, so a crash cannot leave the view holding a work item whose position
@@ -461,6 +460,9 @@ the command already succeeded?" — and its default answers "no" for everything,
 with no such guard is unaffected. Inject it the same way as `command`: `create_runner()`
 closes it over the concrete exception the domain's command slice raises.
 
+**A model with a failure event adds a third port, `failure`, to this same `__init__`** —
+Step 4b has the signature. Two ports is the complete list only for a model without one.
+
 ### process_event
 
 ```python
@@ -500,16 +502,22 @@ tracking write makes every later `wait()` hang until timeout.
 
 ### Firing the command
 
+At module level, alongside the ports:
+
 ```python
 def _causation_metadata(entry: {EntryName}) -> dict[str, str]:
     """Derive the metadata naming this entry's trigger as the direct cause."""
-    metadata = {}
+    metadata: dict[str, str] = {}
     if entry.correlation_id is not None:
         metadata[CORRELATION_ID_KEY] = entry.correlation_id
     if entry.causation_id is not None:
         metadata[CAUSATION_ID_KEY] = entry.causation_id
     return metadata
+```
 
+And as a method on `{SliceName}Projection`, beside `process_event`:
+
+```python
     def _fire(self, entry: {EntryName}) -> None:
         """Issue the command under the entry's own metadata, swallowing failures."""
         try:
@@ -688,9 +696,32 @@ Inject the failure recorder as a **separate optional port** with a no-op default
 projection class works unchanged for models that have no such event:
 
 ```python
+FailurePort = Callable[[{EntryName}, str], None]
+
+
 def _no_failure(entry: {EntryName}, reason: str) -> None:
     """Discard the failure — the default for models with no failure event."""
 ```
+
+**This adds a third parameter to the `__init__` shown in Step 3** — the same shape as the
+other two, defaulted so a model without a failure event never has to pass it:
+
+```python
+    def __init__(
+        self,
+        view: {SliceName}View,
+        command: CommandPort = _no_command,
+        already_applied: AlreadyAppliedPort = _no_already_applied,
+        failure: FailurePort = _no_failure,
+    ) -> None:
+        super().__init__(view=view)
+        self._command = command
+        self._already_applied = already_applied
+        self._failure = failure
+```
+
+`create_runner()` in Step 5 passes `failure=failure` to match; omit both the parameter and
+that argument when the model defines no failure event.
 
 Appending the failure event can itself fail, so wrap that call in its own
 `try/except` too — otherwise the recovery path becomes a new way to kill the runner.
@@ -792,7 +823,7 @@ def create_runner(
     """
 
     def command(entry: {EntryName}) -> None:
-        app.do({CommandSliceName}(...))
+        app.do({CommandSliceName}Slice(...))
 
     # Recognizes the command's own idempotency guard — match whatever
     # exception and message {CommandSliceName}Slice actually raises for work
@@ -899,12 +930,13 @@ async with AsyncExitStack() as stack:
   synchronize on.
 - **An automation with no HTTP surface still belongs in this lifespan.** Do not give it
   its own process or its own application; the loop only closes over a shared store.
-- **If this is the project's first supervisor, add `/healthz` in the same step** — the
-  route, the lag gauge and the 503 test are all in `.build-kit/CLAUDE.md` →
-  *Supervising projections* → *The `/healthz` route*. An automation needs it more than a
+- **If this is the project's first supervisor, add `health.py` in the same step** — the
+  `/livez` and `/readyz` routes, the lag gauge and the 503 test are all in
+  `.build-kit/CLAUDE.md` → *Supervising projections* → *The `/livez` and `/readyz`
+  routes*. An automation needs them more than a
   view does, not less: a view at least has a route someone can notice going stale, whereas
   a dead automation has no symptom at all until someone asks why nothing happened. Leave
-  the route untouched if an earlier slice already added it.
+  the routes untouched if an earlier slice already added them.
 - **Count restarts here.** The supervisor is the only place that knows a runner died, so
   increment a restart counter where it rebuilds one, and expose lag as the gauge described
   in that same section. An automation with no route needs this more than a view does, not less:
@@ -1261,7 +1293,8 @@ src/snake_case({ProjectName})/
     projection.py                     # SHARED RUNTIME — SharedAppProjectionRunner + ProjectionSupervisor (create ONLY if absent; never per-slice)
     metadata.py                       # SHARED RUNTIME — verified in Step 0; supplies the causal id keys, never written per-slice
     telemetry.py                      # SHARED RUNTIME — verified in Step 0; supplies `consumer_span`, never written per-slice
-    main.py                           # EDITED, not created — view, supervisor registration, and /healthz if this is the first supervisor
+    main.py                           # EDITED, not created — view, supervisor registration, and health.py's router if this is the first supervisor
+    health.py                         # SHARED RUNTIME — /livez + /readyz; create ONLY if this slice registers the project's first supervisor
 
 src/snake_case({ProjectName})/snake_case({Context})/snake_case({SliceName})/
     __init__.py
@@ -1322,7 +1355,7 @@ The command slice under
 - [ ] The `drain()` recovery test builds its own view and app, consuming the position **before** any runner is constructed
 - [ ] If the command has an idempotency guard, `already_applied` is injected in `create_runner()` and a test proves `drain()`'s retry of an already-applied entry logs no failure (`caplog` at `ERROR`) and leaves no entry behind — `_fire` discards it rather than waiting for the emitted event
 - [ ] If the trigger event is recorded unconditionally, a test proves a duplicate trigger for completed work leaves the ledger empty, synchronised on a later event's position than the duplicate's own
-- [ ] No `routes.py` created (automations are not exposed via HTTP) — `/healthz` is the one exception, and it is operational, not this slice's surface
-- [ ] `/healthz` exists in `create_app()` and its 503 path has an integration test; added here if this slice registered the project's first supervisor, left untouched if an earlier one did
+- [ ] No `routes.py` created (automations are not exposed via HTTP) — `health.py` is the one exception, and it is operational, not this slice's surface
+- [ ] `health.py` exists with `/livez` and `/readyz`, its router is `include_router`'d last in `create_app()`, and its 503 path has an integration test; added here if this slice registered the project's first supervisor, left untouched if an earlier one did
 - [ ] Step 0 ran: `command.py`, `metadata.py`, `telemetry.py`, `application.py`, `main.py`, `projection.py` and `tests/unit/test_projection.py` all exist, and anything created there was committed as a `chore:` before this slice
 - [ ] `process_event`'s `match` is wrapped in one `consumer_span(envelope, ...)` that re-raises, and `_fire`'s broad guard stays narrowly scoped to the command port — its already-applied branch logs at `info`, everything else still at `exception`

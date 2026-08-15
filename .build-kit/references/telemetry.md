@@ -21,17 +21,22 @@ from them at code-generation time, never carried separately.
 
 | Placeholder | Derived from | Example |
 |---|---|---|
-| `{ProjectName}` | `[project] name` in `pyproject.toml`, PascalCase | `CourseSubscriptions` |
-| `snake_case({ProjectName})` | the single top-level package under `src/` — **confirm it on disk** rather than deriving a name that is not there | `course_subscriptions` |
-| `{ProjectAuthor}` | `name` from `[project] authors` — copy the exact spelling already used by existing modules | `Moritz E. Beber` |
+| `{ProjectName}` | `[project] name` in `pyproject.toml`, PascalCase | `MyProject` |
+| `snake_case({ProjectName})` | the single top-level package under `src/` — **confirm it on disk** rather than deriving a name that is not there | `my_project` |
+| `{ProjectAuthor}` | `name` from `[project] authors` — copy the exact spelling already used by existing modules | `A. N. Author` |
 | `{YYYY}` | the current year, matching the headers on existing modules | `2026` |
-| `{Context}` | the bounded context in PascalCase, from the slice definition's `context` field. `snake_case({Context})` is the sub-package under the project package | `CourseSubscriptions` → `src/course_subscriptions/course_subscriptions/` |
-| `{SliceName}` | the slice title in PascalCase | `RegisterStudent` |
-| `{EventName}` | any event `Decision` in `snake_case({Context})/events.py` — the tests only need one that exists | `CourseRegistered` |
+| `{Context}` | the bounded context in PascalCase, from the slice definition's `context` field. `snake_case({Context})` is the sub-package under the project package | `Kennel` → `src/my_project/kennel/` |
+| `{SliceName}` | the slice title in PascalCase | `RegisterDog` |
+| `{EventName}` | any event `Decision` in `snake_case({Context})/events.py` — the tests only need one that exists | `DogRegistered` |
 
-A project's context often shares its name with the project, which is why the package path
-doubles up (`src/course_subscriptions/course_subscriptions/`). That is expected, not a
-mistake to correct.
+The Example column is a worked illustration only — every value comes from the project you
+are in, never from this table.
+
+**When a context shares the project's name, the package path doubles up** —
+`src/my_project/my_project/` for a `MyProject` context inside `MyProject`. That is
+expected, not a mistake to correct: `{Context}` is resolved from the slice definition, and
+the two segments mean different things even when they spell the same. Do not collapse them
+to one.
 
 Every file below still needs the copyright header and docstrings the pre-commit hooks
 enforce — they are present in these templates, unlike the abbreviated ones in the build

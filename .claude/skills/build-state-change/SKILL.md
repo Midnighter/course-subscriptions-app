@@ -217,17 +217,17 @@ RegisterUser (creates the entity)
     -> POST /users/register        body: {user_id, ...}
 ```
 
-**Before applying any of the above, check whether this slice is a webhook ingress — it takes a different shape entirely.** It is one whenever the slice exists to record something an *external* system has already done, which on the board looks like an external event feeding an automation, with the domain's real command downstream of that automation rather than on this route. Read the board, not the slice name: ours is called `ExternalRegisterStudent`, which reads like a command, while the element crossing the wire is the event `Student Registered`. If that is the shape:
+**Before applying any of the above, check whether this slice is a webhook ingress — it takes a different shape entirely.** It is one whenever the slice exists to record something an *external* system has already done, which on the board looks like an external event feeding an automation, with the domain's real command downstream of that automation rather than on this route. Read the board, not the slice name — an `ExternalRegisterX` slice reads like a command while the element crossing the wire is the event `X Registered`. If that is the shape:
 
 ```
-external "Student Registered" -> automation -> the domain's own command
-    -> POST /webhooks/student-registered    tags=["webhooks"]    202 Accepted
+external "Dog Registered" -> automation -> the domain's own command
+    -> POST /webhooks/dog-registered    tags=["webhooks"]    202 Accepted
 ```
 
 - **Path** — `POST /webhooks/{external-event}`, the external event's name as a **past participle**, kebab-case. Not an imperative: `register` claims the caller is instructing us and that we may decline, when the sender already decided and our only honest answers are "recorded" and "retry me".
 - **Tag** — `webhooks`, the one case that is not tagged by entity. `/webhooks/` marks an operational boundary: paths an external retry loop hammers, that need at-least-once tolerance, and that no first-party client should call.
 - **Status** — `202 Accepted`, not 201. See the template notes below.
-- **Request model** — name it for the payload it carries (`StudentRegisteredWebhook`), not for a command (`RegisterStudentRequest`).
+- **Request model** — name it for the payload it carries (`DogRegisteredWebhook`), not for a command (`RegisterDogRequest`).
 
 4. **Check the path is free.** `grep` it in `docs/openapi.json` — the committed spec is the source of truth for what already exists (`.build-kit/CLAUDE.md` → *The OpenAPI spec is the source of truth*). A collision means a different action verb, or a mis-identified entity. Also check that your path's parameters cannot **shadow** an existing literal path (`/courses/{course_id}` would swallow `/courses/catalogue`) — the spec shows both happily, so this one is yours to catch. On the very first slice the file does not exist yet; that is expected.
 5. **Tag the router with the entity, not the slice** — `tags=["licences"]`, the same pluralised kebab-case kind you took from `_tags()` in step 1. That is what groups this command with every other endpoint over the same entity in `/docs`; a per-slice tag renders a flat list of one-endpoint sections. For a command that creates its own entity the tag is the entity being created: `POST /users/register` is tagged `users`. A webhook ingress is the exception — it is tagged `webhooks`, per step 3. Reuse the exact spelling an existing slice already uses for that entity — `grep '"tags"' docs/openapi.json` — or the two render as separate groups. The slice name is carried by `operation_id`, never by the tag.
@@ -295,7 +295,7 @@ Notes on the template:
 - **A slice must never define its own application, nor its own dependency factory.** `get_application` is the single dependency; it reads the process-wide `{ProjectName}App` off `request.state` (Step 7 and `.build-kit/CLAUDE.md`).
 - **The router carries no `prefix`; the full path goes on the decorator.** One greppable path string per slice, no path parameter hidden in a prefix, and no trailing-slash wart. The slice name lives on in `operation_id=`, which is what links the endpoint back to the slice in the generated spec; `tags=` groups the endpoint by entity instead, and is deliberately shared with other slices.
 - **The entity id is a path parameter and must not also be a body field.** It reaches the slice as an explicit keyword argument next to `**body.model_dump()`. A command with no entity to nest under (`POST /users/register`, or any webhook ingress) keeps every field in the body and drops the path parameter.
-- **Regenerate the spec once the route exists**: `hatch run docs:openapi`, then stage `docs/openapi.json` with the rest of the slice. The pre-commit hook will do it for you if you forget, but it will fail the commit doing so.
+- **Regenerate the spec once the route exists** (`.build-kit/CLAUDE.md` → *The OpenAPI spec is the source of truth*), then stage `docs/openapi.json` with the rest of the slice. The pre-commit hook will do it for you if you forget, but it will fail the commit doing so.
 - `do()` takes an **instance** of the slice, not the class, and internally calls `slice.execute()` — do NOT call `.execute()` yourself.
 - **A command slice subclasses `CommandSlice`, never `Slice` directly.** That base is what carries `outcome` — the ids of the events the command recorded and the position they were appended at. The library's `do()` discards both (`save()`'s return value is dropped, and `collect_events()` drains `new_decisions`), so `{ProjectName}App.do()` overrides it to capture them. A slice left on bare `Slice` still works but reports an empty outcome, and its route then answers 204 for every successful command.
 - **Return the position; clients need it for read-your-writes.** It is the same value `TrackingRecorder.wait(context_name, notification_id, timeout)` polls, so a caller can tell whether a projection has caught up with its own write. It is also what a caller sends straight back to a view as `X-Position-AtLeast` to poll for that write becoming visible — the two halves of the contract in `build-state-view/SKILL.md` → *The position contract*. **Never drop it from the response** on the grounds that nothing in this slice reads it; the reader on the other side of the board does.
@@ -370,7 +370,7 @@ def test_snake_case({SliceName})_raises_when_already_processed() -> None:
 
 File: `tests/integration/snake_case({Context})/test_snake_case({SliceName}).py`
 
-These prove the FastAPI route wires the slice correctly and returns the right status codes and bodies. They belong in `tests/integration/` — a separate hatch env from acceptance tests.
+These prove the FastAPI route wires the slice correctly and returns the right status codes and bodies. They belong in `tests/integration/` — a separate test env from acceptance tests.
 
 **Use the shared `client` fixture from `tests/integration/conftest.py`** — do not build a local `FastAPI()` and do not register any `dependency_overrides`. That fixture wraps the real `create_app()` in a `with TestClient(...)` block, so each test runs the lifespan and gets its own freshly-constructed `{ProjectName}App` over its own in-memory store. Testing the real app is also the second line of defence against two slices claiming the same path — the first being the spec you grepped in Step 4.
 
@@ -381,7 +381,7 @@ from fastapi.testclient import TestClient
 def test_snake_case({SliceName})_returns_201(client: TestClient) -> None:
     """A valid request returns HTTP 201."""
     response = client.post(
-        "/licences/lic_123/cancellation-requests",
+        "/licences/lic_123/admin-cancel",
         json={"field2": 1},
     )
     assert response.status_code == 201
@@ -389,7 +389,7 @@ def test_snake_case({SliceName})_returns_201(client: TestClient) -> None:
 
 def test_snake_case({SliceName})_twice_returns_422(client: TestClient) -> None:
     """Repeating the command returns HTTP 422 with the domain error message."""
-    path = "/licences/lic_123/cancellation-requests"
+    path = "/licences/lic_123/admin-cancel"
     client.post(path, json={"field2": 1})
     response = client.post(path, json={"field2": 1})
     assert response.status_code == 422
@@ -398,7 +398,7 @@ def test_snake_case({SliceName})_twice_returns_422(client: TestClient) -> None:
 
 def test_snake_case({SliceName})_missing_field_returns_422(client: TestClient) -> None:
     """A request missing a required field returns HTTP 422 (Pydantic validation)."""
-    response = client.post("/licences/lic_123/cancellation-requests", json={})
+    response = client.post("/licences/lic_123/admin-cancel", json={})
     assert response.status_code == 422
 ```
 
@@ -454,11 +454,7 @@ Those two lines are the only per-slice change to `main.py` — the `lifespan` is
 
 **Append the `include_router` line to the end of the block; do not reorder the existing ones.** Starlette serves the first route whose pattern fully matches, so a path parameter registered ahead of a literal it can match silently swallows that literal's requests and answers them from the wrong handler — no startup error, no log line. Appending keeps every already-working route ahead of yours. If this slice's path *could* match an existing literal path, redesign the address rather than relying on the order (`.build-kit/CLAUDE.md` → *Never let a literal segment sit where a path parameter could match it*).
 
-Once the router is included the route exists on the real app, so **regenerate the spec and stage it with the slice**:
-
-```
-hatch run docs:openapi     # rewrites docs/openapi.json
-```
+Once the router is included the route exists on the real app, so **regenerate the spec and stage it with the slice** — the project's regeneration command is in `.build-kit/CLAUDE.md` → *The OpenAPI spec is the source of truth*, and it rewrites `docs/openapi.json` in place.
 
 `docs/openapi.json` is the project's record of what URLs exist (`.build-kit/CLAUDE.md` → *The OpenAPI spec is the source of truth*). Confirm the diff adds exactly the path you intended and changes nothing else — a diff that *moves* an existing endpoint means this slice took a path another one was already using.
 
@@ -482,7 +478,7 @@ hatch run docs:openapi     # rewrites docs/openapi.json
 
 ```
 docs/
-    openapi.json                                          # REGENERATED, not hand-written — `hatch run docs:openapi`
+    openapi.json                                          # REGENERATED, not hand-written
 src/snake_case({ProjectName})/
     main.py                                               # EDITED, not created — one import + one include_router line
     command.py                                            # SHARED RUNTIME — verified in Step 0; never written per-slice

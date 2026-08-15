@@ -170,7 +170,7 @@ Notes on the template:
 - **`response_model=` must stay explicit on the decorator.** The return annotation is a union with `Response`, which FastAPI cannot derive a schema from, so the success schema has to be declared — the same reason command routes declare it. The view class is a `Slice`, not a `BaseModel`: map its attributes onto a Pydantic response model explicitly.
 - **The router carries no `prefix`; the full path goes on the decorator.** One greppable path string per slice and no path parameter hidden in a prefix. The slice name lives on in `operation_id=`, which is what links the endpoint back to the slice in the generated spec; `tags=` groups the endpoint by entity instead, and is deliberately shared with other slices.
 - **The path parameter takes the entity's own name** (`dog_id`), not a generic `entity_id`. The internal `{SliceName}View(entity_id=…)` keyword is unaffected — that is the projection's own interface, not the public one.
-- **Regenerate the spec once the route is wired in** (Step 7): `hatch run docs:openapi`, then stage `docs/openapi.json` with the rest of the slice.
+- **Regenerate the spec once the route is wired in** (Step 7; `.build-kit/CLAUDE.md` → *The OpenAPI spec is the source of truth*), then stage `docs/openapi.json` with the rest of the slice.
 
 The FastAPI/Pydantic house rules this template follows (`Annotated[…, Depends(…)]`, `EM101` message variables, runtime imports for Pydantic field types) are in `.build-kit/CLAUDE.md`. Status codes follow the *Error mapping* table in `SKILL.md`.
 
@@ -254,7 +254,7 @@ File: `tests/integration/snake_case({Context})/test_snake_case({SliceName}).py`
 
 These prove the FastAPI route wires the projection correctly and returns the
 right status codes and bodies. They belong in `tests/integration/` — a separate
-hatch env from acceptance tests.
+test env from acceptance tests.
 
 **Use the shared `client` fixture from `tests/integration/conftest.py`** — do not
 build a local `FastAPI()` and do not register any `dependency_overrides`. That
@@ -380,11 +380,9 @@ on the order (`.build-kit/CLAUDE.md` → *Never let a literal segment sit where 
 parameter could match it*).
 
 Once the router is included the route exists on the real app, so **regenerate the
-spec and stage it with the slice**:
-
-```
-hatch run docs:openapi     # rewrites docs/openapi.json
-```
+spec and stage it with the slice** — the project's regeneration command is in
+`.build-kit/CLAUDE.md` → *The OpenAPI spec is the source of truth*, and it
+rewrites `docs/openapi.json` in place.
 
 Confirm the diff adds exactly the path you intended and changes nothing else — a
 diff that *moves* an existing endpoint means this slice took a path another one
@@ -413,7 +411,7 @@ generated, correct, and not a collision — do not try to suppress it.
 
 ```
 docs/
-    openapi.json                                          # REGENERATED, not hand-written — `hatch run docs:openapi`
+    openapi.json                                          # REGENERATED, not hand-written
 src/snake_case({ProjectName})/
     main.py                                               # EDITED, not created — one import + one include_router line
     metadata.py                                           # SHARED RUNTIME — verified in Step 0; this slice type adds nothing to it
