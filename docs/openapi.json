@@ -332,7 +332,7 @@
         ]
       }
     },
-    "/course-registrations": {
+    "/courses/register": {
       "post": {
         "description": "Register a new course with a capacity limit on concurrent subscriptions.",
         "operationId": "register_course",
@@ -377,7 +377,7 @@
         ]
       }
     },
-    "/courses/{course_id}/capacity-changes": {
+    "/courses/{course_id}/change-capacity": {
       "post": {
         "description": "Change the capacity limit on concurrent subscriptions for a course.",
         "operationId": "change_course_capacity",
@@ -456,7 +456,7 @@
         "summary": "Healthz"
       }
     },
-    "/student-registrations": {
+    "/students/register": {
       "post": {
         "description": "Record an external student registration, triggering the automation.",
         "operationId": "external_register_student",
@@ -582,7 +582,7 @@
         ]
       }
     },
-    "/students/{student_id}/subscriptions": {
+    "/students/{student_id}/subscribe-to-course": {
       "post": {
         "description": "Subscribe a student to a course, subject to capacity and student limits.",
         "operationId": "subscribe_student",
@@ -638,7 +638,7 @@
         ]
       }
     },
-    "/students/{student_id}/unsubscriptions": {
+    "/students/{student_id}/unsubscribe-from-course": {
       "post": {
         "description": "Unsubscribe a student from a course they are currently subscribed to.",
         "operationId": "unsubscribe_student",

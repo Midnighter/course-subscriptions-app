@@ -1001,6 +1001,14 @@ no test fails, no route breaks, the event store simply stops being traced.
 
 Details that are load-bearing rather than stylistic:
 
+- **Append the `include_router` line; do not reorder the existing ones.**
+  Starlette serves the first route whose pattern fully matches, so a path
+  parameter registered ahead of a literal it can match silently swallows that
+  literal's requests and answers them from the wrong handler — no startup error,
+  no log line. Appending keeps every already-working route ahead of yours. If
+  this view's path *could* be matched by an existing parameterised path,
+  redesign the address rather than relying on the order (`.build-kit/CLAUDE.md`
+  → *Never let a literal segment sit where a path parameter could match it*).
 - **`stack.enter_context`, not `enter_async_context`.** Both `{ProjectName}App`
   and `ProjectionSupervisor` are *sync* context managers. `AsyncExitStack`
   handles both kinds; picking the wrong method fails at startup.

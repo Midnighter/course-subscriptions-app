@@ -336,7 +336,7 @@ missing a piece of it will otherwise keep producing slices that quietly lack it.
 - **One `{ProjectName}App` per process**, created by the FastAPI lifespan in `src/snake_case({ProjectName})/main.py`; slices never subclass `DcbApplication`. Separate `DcbApplication()` instances each get their own in-memory store (`PERSISTENCE_MODULE` defaults to `eventsourcing.dcb.popo`), so per-slice applications silently cannot see each other's events — an event written through one endpoint would be invisible to the next.
 - **The lifespan *yields* `{"dcb_app": app}`; `get_application` reads `request.state.dcb_app`.** Starlette merges the yielded mapping into the lifespan scope state and shallow-copies it into every request scope, so handlers can't clobber it. Do not assign to `app.state` — it is a different object that never receives lifespan state.
 - **`DcbApplication` is a context manager.** Hold it with `with`, never `lru_cache` — the latter has no teardown hook, so `close()` (and, under Postgres, the connection-pool teardown) never runs.
-- **Adding a slice touches `main.py` only** — one router import plus one `include_router` line. `application.py` is never edited *by a slice*, because `do()` is generic over any `Slice`. (The one process-wide `do()` override is written once and is not a per-slice edit — see *Command outcomes* and *Observability*.)
+- **Adding a slice touches `main.py` only** — one router import plus one `include_router` line, appended to the block. Registration order is load-bearing when a literal segment could be matched by another route's path parameter; see *API addressing* → *Never let a literal segment sit where a path parameter could match it*. `application.py` is never edited *by a slice*, because `do()` is generic over any `Slice`. (The one process-wide `do()` override is written once and is not a per-slice edit — see *Command outcomes* and *Observability*.)
 - **Materialized views and automations use the shared application too.** They are *not* exempt. `ProjectionRunner` takes an application *class* and constructs its own instance, so it is unusable here — see *Projection runners* below for what to use instead.
 
 ### API addressing
@@ -351,33 +351,49 @@ tags = [f"licence:{licence_id}"]   ->   /licences/{licence_id}/...
 
 That is what makes an address checkable: a route whose entity segment disagrees with the slice's boundary tag is a bug, not a style preference.
 
+**A command's URL carries the domain's own verb; a view's carries a noun.** That asymmetry is deliberate. `POST` says only "something happened here"; the action has to be named somewhere, and the domain already named it on the board (`Subscribe Student`, `Change Course Capacity`). Nominalising that back into a noun-phrase resource (`/subscriptions`, `/capacity-changes`) invents a collection nobody models, and re-frames a decision the business makes as a row a client inserts. `GET`, by contrast, *is* the verb — a view path that repeats it (`/list-catalogue`) says the same thing twice.
+
 | Case | Path |
 |------|------|
-| Command on an existing entity | `POST /{entities}/{entity_id}/{intention}` — `POST /licences/{licence_id}/cancellation-requests` |
-| Command that creates the entity (id generated, or the tag is on the thing being created) | `POST /{intention}` — `POST /user-registrations` |
-| Global boundary (`tags=[]`) | `POST /{intention}` at root — justify it in the docstring, same rule as the empty selector |
+| Command on an existing entity | `POST /{entities}/{entity_id}/{action}` — `POST /licences/{licence_id}/cancel` |
+| Command that creates the entity | `POST /{entities}/{action}` — `POST /users/register` |
+| Global boundary (`tags=[]`) | `POST /{entities}/{action}` on the command's subject; if no subject can be named, `POST /{action}` at root — justify it in the docstring, same rule as the empty selector |
 | Two-entity boundary (rare) | Nest under the entity the command *mutates*; the other stays in the body |
 | Single-entity view | `GET /{entities}/{entity_id}/{situation}` — `GET /dogs/{dog_id}/profile` |
 | Collection / search view | `GET /{situation-plural}?params` — `GET /available-stays?from=…&to=…` |
 
 - **`{entities}`** — the boundary tag's kind, pluralised, kebab-case.
-- **`{intention}`** — the command's verb nominalised to a plural noun of intent: cancel → `cancellation-requests`, register → `registrations`, approve → `approvals`, withdraw → `withdrawal-requests`, book → `booking-requests`. Where the nominalisation is awkward, fall back to `{verb}-requests`.
+- **`{action}`** — the command's own name with the noun the path already carries **dropped**, the verb kept, and the command's *object* appended when it has one. The entity is in the path; repeating it is noise.
+  ```
+  AdminCancelLicence  + /licences/{licence_id}/  ->  cancel
+  ChangeCourseCapacity + /courses/{course_id}/   ->  change-capacity
+  SubscribeStudent     + /students/{student_id}/ ->  subscribe-to-course   (object: course)
+  RegisterCourse       + /courses/              ->  register
+  ```
+  Keep a qualifier when dropping it would collide: if both `AdminCancelLicence` and `CustomerCancelLicence` exist, they are `admin-cancel` and `customer-cancel`, not two routes called `cancel`. Imperative verb, never a gerund or a noun — `cancel`, not `cancelling` or `cancellation`.
+- **A creating command keeps its id in the body.** `POST /courses/register` carries `course_id` as body data even when the client supplies it, because an id for a thing that does not exist yet is not an address. This is the one case where the id is *not* lifted to a path parameter.
 - **`{situation}`** — what the reader is looking at, not what the projection is called: `profile`, `itinerary`, `upcoming-arrivals`, `cancellation-context`. `ViewDogProfile` is the slice; `profile` is the situation.
 - **The OpenAPI tag names the entity, never the slice** — `tags=["{entities}"]` on the router, reusing the same pluralised, kebab-case entity kind as the path's `{entities}` segment. A tag is the only grouping a reader of `/docs` or a generated client gets, so one tag per slice groups nothing: it renders as a flat list of one-endpoint sections in build order. Tagging by entity puts every command and every view over a course under `courses`, whichever slice built it.
-  - For a root-level `POST /{intention}` the entity is the one the command **creates** — `POST /course-registrations` is tagged `courses`, not `course-registrations`.
-  - For a collection view it is what the collection is **of** — `GET /course-catalogue` is tagged `courses`.
-  - So the tag is *not* "the first path segment". It is the boundary tag's kind, which only coincides with the first segment in the nested case.
+  - Every **command** path starts with `{entities}`, so for commands the tag is exactly the first path segment — including the creating ones: `POST /courses/register` is tagged `courses`.
+  - A **collection view** sits at the root, so its tag is *not* its first segment. Take what the collection is **of**: `GET /course-catalogue` is tagged `courses`.
   - A genuinely global boundary (`tags=[]`) still has a subject; tag it with that. If no entity can be named, the slice is probably mis-scoped.
 - **The slice name still has to be traceable, so it lives in `operation_id`** — an explicit `operation_id="snake_case({SliceName})"` on the route. That, not the tag, is what links an endpoint back to the slice that built it in the generated spec.
 - **The full path goes on the decorator; the router carries no `prefix`.** One greppable path string per slice, no path parameters hidden in a prefix, and no trailing-slash wart.
-- **The entity id is a path parameter, not a body field**, whenever the command is nested under an entity. Drop it from the request model and pass it alongside: `{SliceName}Slice(licence_id=licence_id, **body.model_dump())`.
+- **The entity id is a path parameter, not a body field**, whenever the command is nested under an *existing* entity. Drop it from the request model and pass it alongside: `{SliceName}Slice(licence_id=licence_id, **body.model_dump())`. A creating command is the exception noted above.
 - **Operational routes are exempt.** `/healthz` and anything like it is infrastructure, not domain — leave it flat.
+
+**Never let a literal segment sit where a path parameter could match it.** Starlette walks the route table in registration order and serves the **first full match**, so `GET /courses/{course_id}` registered before `GET /courses/catalogue` swallows every catalogue request and answers it from the *detail* handler with `course_id="catalogue"` — a 404 from the wrong route, with no warning at import time and no error in the log. Nothing in this kit enforces an ordering, and `include_router` lines are appended per slice, so the safe order today is an accident of build order rather than a property anyone maintains.
+
+- **Prefer addresses that cannot collide over an ordering you have to remember.** This is why a collection view keeps a root-level address — `GET /course-catalogue`, never `GET /courses/catalogue`. It leaves `/courses/{course_id}` free forever, and costs nothing.
+- The command scheme is already safe by construction: a command path always ends in `{action}`, a literal, and never bottoms out at a bare `POST /{entities}/{entity_id}`. `POST /courses/register` and `POST /courses/{course_id}/change-capacity` differ in segment count and cannot shadow each other.
+- If a literal and a parameterised sibling ever genuinely must coexist, register the **literal first** and leave a comment at both `include_router` lines saying the order is load-bearing. Prefer redesigning the address instead.
+- **`grep` the committed spec before choosing a path** — see *The OpenAPI spec is the source of truth*. A shadowed route is invisible there (both paths appear, correctly), so the spec catches duplicates but **not** shadowing. That check is yours to make.
 
 ### The OpenAPI spec is the source of truth
 
 Addresses now take per-slice judgement, so nothing guarantees a rebuild lands on the same URL. `docs/openapi.json` is the record that closes that gap: it is generated from the real `create_app()`, committed, and regenerated by the `hatch-docs-openapi` pre-commit hook on every change. A renamed or colliding endpoint shows up as a diff in a file under review rather than as a silent break.
 
-- **Read it before choosing a path.** `grep` the spec for the path you intend to use; if it is taken, the slice needs a different intention noun (or you have mis-identified the entity).
+- **Read it before choosing a path.** `grep` the spec for the path you intend to use; if it is taken, the slice needs a different action verb (or you have mis-identified the entity). Check for *shadowing* too, not just exact duplicates: a new parameterised path that could match an existing literal one is a break the spec cannot show you.
 - **Never hand-edit it.** Change the route, run `hatch run docs:openapi`, stage the result.
 - It does not exist until the first slice with a route is built — that is expected, not a setup step you missed.
 

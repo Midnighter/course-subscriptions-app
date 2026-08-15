@@ -24,7 +24,7 @@ class RegisterCourseRequest(BaseModel):
 
 
 @router.post(
-    "/course-registrations",
+    "/courses/register",
     status_code=status.HTTP_201_CREATED,
     response_model=CommandResponse,
     operation_id="register_course",

@@ -41,7 +41,7 @@ def test_change_course_capacity_returns_201(
 ) -> None:
     """Changing a registered course's capacity returns HTTP 201."""
     response = client.post(
-        f"/courses/{_COURSE_ID}/capacity-changes",
+        f"/courses/{_COURSE_ID}/change-capacity",
         json={"capacity": 20},
     )
     assert response.status_code == 201
@@ -55,7 +55,7 @@ def test_change_course_capacity_unknown_course_returns_422(
 ) -> None:
     """Changing the capacity of a never-registered course returns HTTP 422."""
     response = client.post(
-        f"/courses/{_COURSE_ID}/capacity-changes",
+        f"/courses/{_COURSE_ID}/change-capacity",
         json={"capacity": 20},
     )
     assert response.status_code == 422
@@ -68,7 +68,7 @@ def test_change_course_capacity_same_capacity_returns_422(
 ) -> None:
     """Requesting the current capacity again returns HTTP 422."""
     response = client.post(
-        f"/courses/{_COURSE_ID}/capacity-changes",
+        f"/courses/{_COURSE_ID}/change-capacity",
         json={"capacity": 10},
     )
     assert response.status_code == 422
@@ -94,7 +94,7 @@ def test_change_course_capacity_below_subscriptions_returns_422(
             ],
         )
     response = client.post(
-        f"/courses/{_COURSE_ID}/capacity-changes",
+        f"/courses/{_COURSE_ID}/change-capacity",
         json={"capacity": 2},
     )
     assert response.status_code == 422
@@ -105,5 +105,5 @@ def test_change_course_capacity_missing_field_returns_422(
     client: TestClient,
 ) -> None:
     """A request missing the required capacity field returns HTTP 422."""
-    response = client.post(f"/courses/{_COURSE_ID}/capacity-changes", json={})
+    response = client.post(f"/courses/{_COURSE_ID}/change-capacity", json={})
     assert response.status_code == 422

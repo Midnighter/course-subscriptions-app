@@ -35,7 +35,7 @@ def course_registered(dcb_app: CourseSubscriptionsApp) -> CourseRegistered:
 def test_register_course_returns_201(client: TestClient) -> None:
     """Registering a new course returns HTTP 201."""
     response = client.post(
-        "/course-registrations",
+        "/courses/register",
         json={
             "course_id": _COURSE_ID,
             "title": "Intro to Event Modeling",
@@ -54,7 +54,7 @@ def test_register_course_already_registered_returns_422(
 ) -> None:
     """Registering an already-registered course id returns HTTP 422."""
     response = client.post(
-        "/course-registrations",
+        "/courses/register",
         json={
             "course_id": _COURSE_ID,
             "title": "Intro to Event Modeling",
@@ -67,5 +67,5 @@ def test_register_course_already_registered_returns_422(
 
 def test_register_course_missing_field_returns_422(client: TestClient) -> None:
     """A request missing a required field returns HTTP 422."""
-    response = client.post("/course-registrations", json={"course_id": _COURSE_ID})
+    response = client.post("/courses/register", json={"course_id": _COURSE_ID})
     assert response.status_code == 422

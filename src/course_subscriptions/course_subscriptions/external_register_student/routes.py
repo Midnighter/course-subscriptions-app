@@ -24,7 +24,7 @@ class RegisterStudentRequest(BaseModel):
 
 
 @router.post(
-    "/student-registrations",
+    "/students/register",
     status_code=status.HTTP_201_CREATED,
     response_model=CommandResponse,
     operation_id="external_register_student",

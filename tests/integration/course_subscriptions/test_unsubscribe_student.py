@@ -60,7 +60,7 @@ def test_unsubscribe_student_returns_201(
 ) -> None:
     """Unsubscribing an enrolled student returns HTTP 201."""
     response = client.post(
-        f"/students/{_STUDENT_ID}/unsubscriptions",
+        f"/students/{_STUDENT_ID}/unsubscribe-from-course",
         json={"course_id": _COURSE_ID},
     )
     assert response.status_code == 201
@@ -72,7 +72,7 @@ def test_unsubscribe_student_returns_201(
 def test_unsubscribe_student_unknown_course_returns_422(client: TestClient) -> None:
     """Unsubscribing from a never-registered course returns HTTP 422."""
     response = client.post(
-        f"/students/{_STUDENT_ID}/unsubscriptions",
+        f"/students/{_STUDENT_ID}/unsubscribe-from-course",
         json={"course_id": _COURSE_ID},
     )
     assert response.status_code == 422
@@ -85,7 +85,7 @@ def test_unsubscribe_student_not_subscribed_returns_422(
 ) -> None:
     """Unsubscribing a student who never subscribed returns HTTP 422."""
     response = client.post(
-        f"/students/{_STUDENT_ID}/unsubscriptions",
+        f"/students/{_STUDENT_ID}/unsubscribe-from-course",
         json={"course_id": _COURSE_ID},
     )
     assert response.status_code == 422
@@ -94,7 +94,7 @@ def test_unsubscribe_student_not_subscribed_returns_422(
 
 def test_unsubscribe_student_missing_field_returns_422(client: TestClient) -> None:
     """A request missing the required course_id field returns HTTP 422."""
-    response = client.post(f"/students/{_STUDENT_ID}/unsubscriptions", json={})
+    response = client.post(f"/students/{_STUDENT_ID}/unsubscribe-from-course", json={})
     assert response.status_code == 422
 
 
@@ -117,7 +117,7 @@ def test_unsubscribe_student_isolates_other_students(
         ],
     )
     response = client.post(
-        f"/students/{_STUDENT_ID}/unsubscriptions",
+        f"/students/{_STUDENT_ID}/unsubscribe-from-course",
         json={"course_id": _COURSE_ID},
     )
     assert response.status_code == 422

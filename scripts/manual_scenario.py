@@ -76,7 +76,7 @@ def register_course(
 ) -> httpx2.Response:
     """Register a course with the given capacity."""
     return client.post(
-        "/course-registrations",
+        "/courses/register",
         json={
             "course_id": course_id,
             "title": f"Course {course_id}",
@@ -92,7 +92,7 @@ def register_student(
 ) -> httpx2.Response:
     """Register a student with the given course limit."""
     return client.post(
-        "/student-registrations",
+        "/students/register",
         json={
             "student_id": student_id,
             "name": f"Student {student_id}",
@@ -108,7 +108,7 @@ def subscribe(
 ) -> httpx2.Response:
     """Subscribe a student to a course."""
     return client.post(
-        f"/students/{student_id}/subscriptions",
+        f"/students/{student_id}/subscribe-to-course",
         json={"course_id": course_id},
     )
 
@@ -120,7 +120,7 @@ def unsubscribe(
 ) -> httpx2.Response:
     """Unsubscribe a student from a course."""
     return client.post(
-        f"/students/{student_id}/unsubscriptions",
+        f"/students/{student_id}/unsubscribe-from-course",
         json={"course_id": course_id},
     )
 
@@ -132,7 +132,7 @@ def change_capacity(
 ) -> httpx2.Response:
     """Change a course's capacity."""
     return client.post(
-        f"/courses/{course_id}/capacity-changes",
+        f"/courses/{course_id}/change-capacity",
         json={"capacity": capacity},
     )
 
@@ -337,14 +337,14 @@ def main() -> int:
         # request-schema validation
         expect(
             client.post(
-                "/course-registrations",
+                "/courses/register",
                 json={"course_id": "EM-0000-001", "title": "No capacity"},
             ),
             422,
             label="register course missing capacity field",
         )
         expect(
-            client.post(f"/students/{STUDENT_1}/subscriptions", json={}),
+            client.post(f"/students/{STUDENT_1}/subscribe-to-course", json={}),
             422,
             label="subscribe missing course_id field",
         )

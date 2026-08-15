@@ -22,7 +22,7 @@ class ChangeCourseCapacityRequest(BaseModel):
 
 
 @router.post(
-    "/courses/{course_id}/capacity-changes",
+    "/courses/{course_id}/change-capacity",
     status_code=status.HTTP_201_CREATED,
     response_model=CommandResponse,
     operation_id="change_course_capacity",

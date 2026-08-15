@@ -77,7 +77,7 @@ def test_subscribe_student_returns_201(
 ) -> None:
     """Subscribing a registered student to a registered course returns HTTP 201."""
     response = client.post(
-        f"/students/{_STUDENT_ID}/subscriptions",
+        f"/students/{_STUDENT_ID}/subscribe-to-course",
         json={"course_id": _COURSE_ID},
     )
     assert response.status_code == 201
@@ -92,7 +92,7 @@ def test_subscribe_student_unknown_course_returns_422(
 ) -> None:
     """Subscribing to a never-registered course returns HTTP 422."""
     response = client.post(
-        f"/students/{_STUDENT_ID}/subscriptions",
+        f"/students/{_STUDENT_ID}/subscribe-to-course",
         json={"course_id": _COURSE_ID},
     )
     assert response.status_code == 422
@@ -105,7 +105,7 @@ def test_subscribe_student_already_subscribed_returns_422(
 ) -> None:
     """Subscribing twice to the same course returns HTTP 422."""
     response = client.post(
-        f"/students/{_STUDENT_ID}/subscriptions",
+        f"/students/{_STUDENT_ID}/subscribe-to-course",
         json={"course_id": _COURSE_ID},
     )
     assert response.status_code == 422
@@ -139,7 +139,7 @@ def test_subscribe_student_course_full_returns_422(
         ],
     )
     response = client.post(
-        f"/students/{_STUDENT_ID}/subscriptions",
+        f"/students/{_STUDENT_ID}/subscribe-to-course",
         json={"course_id": _COURSE_ID},
     )
     assert response.status_code == 422
@@ -179,7 +179,7 @@ def test_subscribe_student_at_subscription_limit_returns_422(
         ],
     )
     response = client.post(
-        f"/students/{_STUDENT_ID}/subscriptions",
+        f"/students/{_STUDENT_ID}/subscribe-to-course",
         json={"course_id": _COURSE_ID},
     )
     assert response.status_code == 422
@@ -188,5 +188,5 @@ def test_subscribe_student_at_subscription_limit_returns_422(
 
 def test_subscribe_student_missing_field_returns_422(client: TestClient) -> None:
     """A request missing the required course_id field returns HTTP 422."""
-    response = client.post(f"/students/{_STUDENT_ID}/subscriptions", json={})
+    response = client.post(f"/students/{_STUDENT_ID}/subscribe-to-course", json={})
     assert response.status_code == 422

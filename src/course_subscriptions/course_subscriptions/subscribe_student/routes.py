@@ -22,7 +22,7 @@ class SubscribeStudentRequest(BaseModel):
 
 
 @router.post(
-    "/students/{student_id}/subscriptions",
+    "/students/{student_id}/subscribe-to-course",
     status_code=status.HTTP_201_CREATED,
     response_model=CommandResponse,
     operation_id="subscribe_student",

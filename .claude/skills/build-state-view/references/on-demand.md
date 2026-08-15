@@ -370,6 +370,15 @@ def create_app() -> FastAPI:
 Those two lines are the only per-slice change to `main.py` — the `lifespan` is
 **not** touched, and `src/snake_case({ProjectName})/application.py` is never edited at all.
 
+**Append the line to the end of the block; do not reorder the existing ones.**
+Starlette serves the first route whose pattern fully matches, so a path parameter
+registered ahead of a literal it can match silently swallows that literal's requests
+and answers them from the wrong handler — no startup error, no log line. Appending
+keeps every already-working route ahead of yours. If this view's path *could* be
+matched by an existing parameterised path, redesign the address rather than relying
+on the order (`.build-kit/CLAUDE.md` → *Never let a literal segment sit where a path
+parameter could match it*).
+
 Once the router is included the route exists on the real app, so **regenerate the
 spec and stage it with the slice**:
 

@@ -86,7 +86,7 @@ def test_a_command_records_the_requests_correlation_id(
 ) -> None:
     """The id seeded at ingress lands on the events the route's command writes."""
     response = client.post(
-        "/student-registrations",
+        "/students/register",
         json={"student_id": _STUDENT_ID, "name": "Anna Müller", "course_limit": 2},
         headers={CORRELATION_ID_HEADER: "corr-1"},
     )

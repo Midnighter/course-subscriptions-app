@@ -89,6 +89,14 @@ def create_app() -> FastAPI:
     app = FastAPI(lifespan=lifespan)
     instrument_app(app)
     app.add_middleware(MetadataMiddleware)
+    # Registration order is load-bearing: Starlette serves the first route whose
+    # pattern fully matches, so a path parameter registered ahead of a literal it
+    # can match silently swallows that literal's requests and answers them from
+    # the wrong handler — no startup error, no log line. Append new slices at the
+    # end of this block; never reorder what is already here. The addresses below
+    # are chosen so that no such collision exists (see `.build-kit/CLAUDE.md` →
+    # "Never let a literal segment sit where a path parameter could match it"),
+    # so keep it that way rather than making the order carry the correctness.
     app.include_router(student_course_subscriptions_routes.router)
     app.include_router(subscribe_student_routes.router)
     app.include_router(unsubscribe_student_routes.router)

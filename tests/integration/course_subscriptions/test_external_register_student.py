@@ -14,7 +14,7 @@ _STUDENT_ID = "STU-2026-0042"
 def test_external_register_student_route_returns_201(client: TestClient) -> None:
     """Recording a registration via the route returns HTTP 201."""
     response = client.post(
-        "/student-registrations",
+        "/students/register",
         json={
             "student_id": _STUDENT_ID,
             "name": "Anna Müller",
@@ -37,8 +37,8 @@ def test_external_register_student_route_is_unconditional(
         "course_limit": 2,
     }
 
-    first = client.post("/student-registrations", json=body)
-    second = client.post("/student-registrations", json=body)
+    first = client.post("/students/register", json=body)
+    second = client.post("/students/register", json=body)
 
     assert first.status_code == 201
     assert second.status_code == 201
@@ -49,7 +49,7 @@ def test_external_register_student_route_missing_field_returns_422(
 ) -> None:
     """A request missing a required field returns HTTP 422."""
     response = client.post(
-        "/student-registrations",
+        "/students/register",
         json={"student_id": _STUDENT_ID},
     )
     assert response.status_code == 422

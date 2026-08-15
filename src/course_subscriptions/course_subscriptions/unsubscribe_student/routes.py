@@ -22,7 +22,7 @@ class UnsubscribeStudentRequest(BaseModel):
 
 
 @router.post(
-    "/students/{student_id}/unsubscriptions",
+    "/students/{student_id}/unsubscribe-from-course",
     status_code=status.HTTP_201_CREATED,
     response_model=CommandResponse,
     operation_id="unsubscribe_student",
