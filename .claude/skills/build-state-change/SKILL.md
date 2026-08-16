@@ -42,6 +42,7 @@ A slice is built *on* the shared runtime; it never carries a copy of it. Before 
 | `application.py` | ditto — including the `do()` override and the `command_metadata()` / `command_span` inside it |
 | `main.py` | ditto — including `configure_telemetry()`, `instrument_app()`, `instrument_recorder()` and `add_middleware(MetadataMiddleware)` |
 | `projection.py` | not used by this slice type; leave it alone if absent |
+| `auth.py` | `.build-kit/CLAUDE.md` → *Authentication and authorisation*; needed once this slice's screen names an actor — **its absence is invisible**, since an unguarded route answers 201 to anyone |
 
 A missing module is an incomplete setup, not an opt-out — in particular, **do not skip a slice's instrumentation because `telemetry.py` is absent.** Create what is missing, run the test suites, and commit it on its own as a `chore:` **before** starting the slice: a shared-runtime module folded into a `feat:` commit is unreviewable and reads as slice-specific when it is not.
 
@@ -232,6 +233,22 @@ external "Dog Registered" -> automation -> the domain's own command
 4. **Check the path is free.** `grep` it in `docs/openapi.json` — the committed spec is the source of truth for what already exists (`.build-kit/CLAUDE.md` → *The OpenAPI spec is the source of truth*). A collision means a different action verb, or a mis-identified entity. Also check that your path's parameters cannot **shadow** an existing literal path (`/courses/{course_id}` would swallow `/courses/catalogue`) — the spec shows both happily, so this one is yours to catch. On the very first slice the file does not exist yet; that is expected.
 5. **Tag the router with the entity, not the slice** — `tags=["licences"]`, the same pluralised kebab-case kind you took from `_tags()` in step 1. That is what groups this command with every other endpoint over the same entity in `/docs`; a per-slice tag renders a flat list of one-endpoint sections. For a command that creates its own entity the tag is the entity being created: `POST /users/register` is tagged `users`. A webhook ingress is the exception — it is tagged `webhooks`, per step 3. Reuse the exact spelling an existing slice already uses for that entity — `grep '"tags"' docs/openapi.json` — or the two render as separate groups. The slice name is carried by `operation_id`, never by the tag.
 
+### Then choose the actor rule
+
+The slice's **screen** element names the lane that may issue this command. Read it off
+`slice.json` and decide the rule before writing the route; a command left open to anyone is
+a defect the happy-path tests cannot see.
+
+- **The project has `src/snake_case({ProjectName})/auth.py`** — pick the `require_*`
+  dependency matching the screen's lane, or add one there if the lane is new. Never write
+  the check in the route body.
+- **The project has no `auth.py` and this slice's screen names an actor** — create it now,
+  before the route, and commit it as a `chore:` exactly like any other missing piece of the
+  shared runtime. `.build-kit/CLAUDE.md` → *Authentication and authorisation* has the shape
+  and the traps.
+- **The board draws no actor for this slice** — leave the route open, and say so in the
+  route's docstring. Silence should not be the same as an oversight.
+
 ### Full structure
 
 ```python
@@ -242,6 +259,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 
 from snake_case({ProjectName}).application import {ProjectName}App, get_application
+from snake_case({ProjectName}).auth import require_licence_manager  # the slice's actor rule
 from snake_case({ProjectName}).command import CommandResponse
 from snake_case({ProjectName}).snake_case({Context}).snake_case({SliceName}).slice import {SliceName}Slice
 
@@ -262,6 +280,8 @@ class {SliceName}Request(BaseModel):
 # verbatim.
 @router.post(
     "/licences/{licence_id}/cancel",
+    # Omit this line only if the board draws no actor for this slice.
+    dependencies=[Depends(require_licence_manager)],
     status_code=status.HTTP_201_CREATED,
     response_model=CommandResponse,
     operation_id="snake_case({SliceName})",
@@ -303,6 +323,7 @@ Notes on the template:
 - **A webhook ingress answers `HTTP_202_ACCEPTED` instead — the one exception, and it is about who did the work.** The route records the *external* event; the domain's own command is issued afterwards by the automation that follows it, so when the response goes out the thing the sender named has not happened yet, and 201 would claim it had. The 204 branch and the response body are unchanged — the caller still gets a `position`, which is the only way it can poll for the automation catching up. Do not generalise this: an ordinary command's work *is* done when it answers.
 - **`response_model=` must be explicit on the decorator.** The return annotation is a union with `Response`, which FastAPI cannot derive a schema from.
 - Use `status.HTTP_422_UNPROCESSABLE_CONTENT`; the older `..._ENTITY` alias raises a `StarletteDeprecationWarning`.
+- **The actor rule goes in `dependencies=[...]`, not in the handler.** The check completes inside the dependency, so the handler never receives the `Principal` and cannot start branching on it. The caller's identity reaches the recorded events through the dependency's metadata, not through anything this route does.
 - **Route handlers add NO telemetry code.** Do not import OpenTelemetry here, do not open a span, do not touch `metadata`. The HTTP span comes from `FastAPIInstrumentor` in `create_app()` and the command span from `{ProjectName}App.do()` — both already exist, one level above every slice. A span opened in a route handler duplicates one of those two.
 
 ### Error mapping
@@ -403,6 +424,8 @@ def test_snake_case({SliceName})_missing_field_returns_422(client: TestClient) -
 ```
 
 The URL is the worked example again — use the path you chose in Step 4, and note that the entity id now travels in it rather than in `json=`. Where a test needs the id in two places (arranged history and request), take it from the shared id fixture rather than repeating the literal.
+
+**A guarded route needs two more tests than the ones above**: a **401** with no `Authorization` header at all, and a **403** as the wrong actor. Take the headers from the auth fixtures in `tests/integration/conftest.py` — the `client` fixture itself stays anonymous, so every authenticated request shows which actor it speaks for. For a destructive command, arrange the history that would have made it **succeed** before asserting the 403; otherwise the test passes on a precondition failure and would keep passing with the rule removed. Assert `response.json()["detail"]` too, so the two refusal reasons cannot be confused for one another.
 
 ### Arranging prerequisite history
 

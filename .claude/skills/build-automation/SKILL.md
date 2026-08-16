@@ -559,6 +559,13 @@ crash); `causation_id` is the **trigger event's own uuid**, naming the direct ca
 Never take either id from a client — `causation_id` must always resolve to a real event
 in this log, and `metadata.py` sanitises the one id a client may influence.
 
+**Carry the two ids and nothing else — in particular, never a principal.** In a project
+with `auth.py` the trigger event names the caller who authenticated it, and copying that
+onto the automation's own events would assert an authentication that never took place:
+this command runs on a projection thread, with no request and no caller. The absence is
+recoverable, not lossy — `causation_id` leads a reader straight to the event that *does*
+name a principal. Assert the absence in a test, so a later well-meant copy is caught.
+
 **`_fire` takes the entry and nothing else**, and that is deliberate: recovery (Step 4a)
 fires commands with no triggering envelope in hand, so the ids have to come off the
 ledger row rather than a live event. Both call sites then pass the same thing, there is

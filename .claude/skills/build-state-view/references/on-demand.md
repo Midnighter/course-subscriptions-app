@@ -102,6 +102,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 
 from snake_case({ProjectName}).application import {ProjectName}App, get_application
+from snake_case({ProjectName}).auth import require_dog_owner_self  # the slice's actor rule
 from snake_case({ProjectName}).snake_case({Context}).snake_case({SliceName}).projection import {SliceName}View
 from snake_case({ProjectName}).view import (
     NOT_FOUND_RESPONSE,
@@ -129,6 +130,9 @@ class {SliceName}Response(BaseModel):
 # *Addressing the view*.
 @router.get(
     "/dogs/{dog_id}/profile",
+    # Omit this line only if the board draws no actor for this slice —
+    # see `SKILL.md` → *The actor rule*.
+    dependencies=[Depends(require_dog_owner_self)],
     response_model={SliceName}Response,
     operation_id="snake_case({SliceName})",
     responses={**VIEW_RESPONSES, status.HTTP_404_NOT_FOUND: NOT_FOUND_RESPONSE},
@@ -349,6 +353,19 @@ def test_snake_case({SliceName})_reports_too_early_when_behind(
   `None`, the header is absent, and the first test would fail for the wrong reason.
 - **Assert `>= 1`, never a literal.** The position is the store head, so it counts every
   event the fixtures seeded, not only the ones this view projects.
+
+### A guarded view needs two more tests
+
+A **401** with no `Authorization` header, and a **403** as the wrong actor — with the data
+seeded, so the test proves the rule refused the read rather than that there was nothing to
+return. Assert `response.json()["detail"]` as well as the status. For an owner-scoped view,
+add a third: the *other* subject reading their **own** account gets 200 and sees none of
+this one's data. That is what distinguishes "the view is scoped by id" from "the rule
+happens to refuse cross-account reads" — two different things, and only the first survives
+a change to the rule.
+
+Take headers from the auth fixtures in `tests/integration/conftest.py`; the `client`
+fixture stays anonymous so each test names the actor it speaks for.
 
 ---
 

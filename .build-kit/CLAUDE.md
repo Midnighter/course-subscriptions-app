@@ -31,6 +31,7 @@ Every new Python module must satisfy these before it can be committed:
 - **Depend on `Annotated[T, Depends(...)]`, not `T = Depends(...)`.** The old form trips `FAST002` and `B008`.
 - **Pydantic model fields need runtime type imports.** `from __future__ import annotations` + PEP 563 is fine for everything *except* types that appear as `BaseModel` fields — Pydantic can't rebuild the schema when the class is under `TYPE_CHECKING`. Import such types at runtime and silence `TC003` with a `# noqa: TC003` comment on that specific line.
 - **Dependency factories read from `request.state`, never `lru_cache`.** `get_application` (state-change / on-demand views) and per-slice view getters such as `get_snake_case({SliceName})_view` (materialized views) read the object the lifespan already yielded into `request.state` — they don't construct or cache anything themselves. `lru_cache` has no teardown hook and would pin the first test's instance across every later test; since nothing here uses it, integration tests need no `dependency_overrides` at all.
+- **A dependency that sets a contextvar must be `async def`.** A sync `def` dependency runs in the threadpool on a copied context, so the value never reaches the route — silently. See *Authentication and authorisation*.
 - **A dependency's parameter types must be importable at runtime.** `def get_application(request: Request)` with `Request` under `TYPE_CHECKING` makes FastAPI fail to resolve the annotation and silently treat `request` as a *query parameter* — every call then 422s with `{'loc': ['query', 'request'], 'msg': 'Field required'}`. Import such types at runtime and silence `TC002` with a `# noqa` on that line, same as for Pydantic field types.
 
 ## Observability
@@ -59,14 +60,83 @@ OpenTelemetry covers three seams the library gives no help with: the command pat
 Every recorded event carries three general-purpose keys in `TaggedEvent.metadata`: `correlation_id` (the flow it belongs to), `causation_id` (the event that caused it), and `created_at` (when the unit of work that wrote it ran). They ride on the **envelope, not the `Decision`**, so adding them changes no event schema and needs no migration.
 
 - **`src/snake_case({ProjectName})/metadata.py` is shared runtime, written once at *First-time project setup*.** The module and its tests are in **`.build-kit/references/metadata.md`** — copy them from there rather than deriving them from the bullets below, which are the *why*, not the source. Same repair rule as `telemetry.py`: a project missing it was set up incompletely, so create it and its wiring first and commit as a `chore:`.
-- **Metadata is seeded centrally, at exactly two places.** `MetadataMiddleware` puts a `correlation_id` in context per HTTP request; `{ProjectName}App.do` seeds `created_at` always, and `correlation_id` only when absent. **Slices and routes never touch metadata** — a slice that reaches for it is a slice that will disagree with the next one.
+- **Metadata is seeded centrally, at two places — three once a project has actors.** `MetadataMiddleware` puts a `correlation_id` in context per HTTP request; `{ProjectName}App.do` seeds `created_at` always, and `correlation_id` only when absent; and, in a project with `auth.py`, the auth dependency seeds the caller's `principal_id`/`principal_type` (see *Authentication and authorisation*). Each is the only place that knows its fact — the request, the unit of work, the caller. **Slices and routes never touch metadata** — a slice that reaches for it is a slice that will disagree with the next one.
 - **`MetadataMiddleware` must be pure ASGI, not `BaseHTTPMiddleware`.** The latter runs the endpoint in a separate anyio task, so a contextvar set in its `dispatch` never reaches the route and the metadata silently arrives empty. This is the single most likely way to ship a `correlation_id` that is always freshly minted and never the client's.
 - **A client-supplied `correlation_id` is sanitised, never trusted.** It lands in a `jsonb` column, the logs, and a response header, so bound it and reject control characters. Replace an unusable one outright rather than truncating: a stored id is then either exactly what the client sent or one we minted, never a mangled prefix of the two.
 - **`causation_id` is derived locally, always, and is never accepted from a client.** The invariant it buys is that every `causation_id` resolves to an event uuid in our own log. That is also why a **root command carries no `causation_id` at all**: an HTTP command has no causing *event*, and minting an id that resolves to nothing would break exactly the invariant that justified rejecting the client's. A root is still unambiguous — `correlation_id` present, `causation_id` absent.
 - **`created_at` uses explicit UTC, not the library's `datetime_now_with_tzinfo()`.** That honours `TZINFO_TOPIC`, and the timestamp on a permanent log record should not be reconfigurable by an environment variable set for unrelated reasons. It is stamped per command, not per flow: an automation's command is a later unit of work than the trigger that caused it.
 - **This is not a substitute for `traceparent`, and does not replace it.** They differ in lifetime (permanent versus the collector's retention window), in availability (always versus off unless an exporter is configured — every test env runs a no-op tracer), and in granularity (`causation_id` is a stored event's uuid, so it cannot be derived from a span id). Keep both, and make them **joinable** via the span attribute described under *Observability*.
 - **Metadata is not queryable and is not part of the append condition.** `DcbQueryItem` is `types + tags` only. Any dedup or idempotency keyed on metadata can only ever be read-then-write, with a race window. The DCB-native way to make a command idempotent is a `command:<key>` tag inside `consistency_boundary()`, not a metadata lookup.
-- **Adding a key later — `source`, `actor`, a tenant id — is a one-line change in `metadata.py` and nowhere else.** If a proposed key needs edits in a slice, it is in the wrong place.
+- **Adding a key later — `source`, a tenant id — is a one-line change in `metadata.py` and nowhere else.** If a proposed key needs edits in a slice, it is in the wrong place. `principal_id`/`principal_type` were added exactly that way.
+
+## Authentication and authorisation
+
+A board's actors are not decoration: each slice's **screen** element names the lane that may
+call it, and a route that ignores its lane lets any caller drive any command. Add this the
+first time a project needs it; a project whose board has one anonymous public surface and
+nothing else legitimately has no `auth.py`.
+
+- **`src/snake_case({ProjectName})/auth.py` is shared runtime, written once**, like
+  `metadata.py` — but unlike it there is no reference file to copy, because its contents are
+  dictated by the board's actor lanes and differ per project. What follows is the shape, not
+  a source to transcribe.
+- **Derive the rules from the slices, not from guesswork.** Read the screen lane off each
+  `.build-kit/.slices/{context}/*/slice.json` and write the route/actor table down before
+  writing any dependency. A rule that does not trace back to a lane is a rule the business
+  never asked for.
+- **One `Principal` model, one `parse_token`, several `require_*` dependencies.**
+  `parse_token` is the **entire swap surface**: a fake token today, JWT signature
+  verification against a JWKS endpoint later, with no route, test, or dependency changing.
+  Keep everything else — the model, the dependencies, the route wiring — ignorant of the
+  credential's format.
+- **`principal_id`, not `user_id`, and a `principal_type` beside it.** Machine callers are
+  normal — a webhook posted by an upstream system has no person behind it, and an event
+  log that says otherwise is permanently wrong. OAuth2 standardises no principal-type
+  claim (RFC 6749 distinguishes *grants*; Azure AD, Cognito, Google Cloud IAM and Keycloak
+  each invented their own), so a project-level `user`/`service` enum is the normal thing to
+  have. Two keys rather than one composite `user:...` string keeps both queryable in the
+  `jsonb` column without substring matching.
+- **The auth dependency must be an `async def` *generator*.** This is the trap. A sync `def`
+  dependency runs in the threadpool on a **copied** context, so a contextvar set there never
+  reaches the route — and nothing fails: the request still answers 201 and the events are
+  simply recorded with no principal, silently and unrecoverably. The `with
+  put_metadata_in_context(...): yield principal` form also restores the context on the way
+  out, which a plain `async def` returning a value cannot. Same class of mistake as
+  `BaseHTTPMiddleware` under *Event metadata*, and it deserves the same standing regression
+  test: assert on the **recorded event's** metadata, not on the response code.
+- **Wire rules through the decorator's `dependencies=[...]`, not a handler parameter.** The
+  check completes inside the dependency, so the handler never needs the `Principal` back —
+  and a route body that never sees it cannot start branching on it. One line per route, no
+  slice changes.
+- **An ownership rule declares the path parameter itself.** A dependency that takes
+  `student_id: str` has it resolved from the path by FastAPI and hands it in, so one
+  dependency serves every `/students/{student_id}/...` route. Comparing it to the token's id
+  is what stops a student acting on somebody else's account — the case that is easy to
+  forget precisely because the happy path looks identical.
+- **`HTTPBearer(auto_error=False)`, always.** Left to itself it answers a *missing*
+  `Authorization` header with **403**, which tells an anonymous caller they were identified
+  and refused, and omits the `WWW-Authenticate` challenge RFC 7235 requires. Take the
+  `None` and raise the 401 yourself. Keep the split honest throughout: **401 = not
+  identified** (missing or malformed credential), **403 = identified and refused**.
+- **An automation's events carry no principal, deliberately.** A projection thread has no
+  request and no caller, so there is nothing to record; `causation_id` already leads a
+  reader back to the authenticated event that triggered it. Inventing a `system` principal
+  would assert an authentication that never took place. Assert the *absence* in a test, so
+  a later "helpful" copy of the trigger's principal is caught.
+- **Don't add a policy engine for this.** Casbin, Oso and OPA earn their keep when roles
+  multiply beyond the board's lanes, when policy must change without a redeploy, when there
+  is multi-tenancy or permission inheritance, or when authorisation decisions need their own
+  audit log distinct from the event log. Short of that they move policy out of reach of
+  ruff, pyrefly and pydoclint, cost a full lock-file regeneration (see *Regenerating lock
+  files*), and still leave the ownership rule written by hand.
+- **Every route gets two tests beyond its happy path**: a 401 with no token and a 403 as the
+  wrong actor. For a destructive command, seed the state that would have made it *succeed*,
+  so the test proves the rule refused it rather than the precondition. `/livez` and
+  `/readyz` stay unauthenticated — a probe that needs a credential is a probe that reports
+  the credential's health.
+- **`docs/openapi.json` is the check that the wiring took.** Every guarded route should show
+  `security: [{"HTTPBearer": []}]` and the probes none. It is regenerated by the pre-commit
+  hook, never hand-edited.
 
 ## Test layout
 
@@ -83,7 +153,7 @@ Every recorded event carries three general-purpose keys in `TaggedEvent.metadata
 
 Before the first build skill runs in a new project, check whether the files below exist. If not, create them in this order before proceeding with the skill — the build skills themselves assume all of this is already in place. Every build skill's **Step 0** re-checks this list, so a project that was set up incompletely is repaired at the next slice rather than carried forward.
 
-The shared runtime is these nine modules under `src/snake_case({ProjectName})/`:
+The shared runtime is these ten modules under `src/snake_case({ProjectName})/`:
 
 | Module | Created |
 |---|---|
@@ -96,12 +166,13 @@ The shared runtime is these nine modules under `src/snake_case({ProjectName})/`:
 | `main.py` | setup |
 | `projection.py` | the first time a projection slice is built (see *Projection runners*) |
 | `health.py` | the first time a slice registers a **supervisor** (see *Supervising projections*) |
+| `auth.py` | the first time a slice's screen names an **actor** to enforce (see *Authentication and authorisation*) |
 
-Each is written **once** per project and is never a per-slice artefact. The last two are deferred to first use, because both are dead code in a project with no projection — but Step 0 still checks for them, and a slice that finds one missing creates it before the slice, not alongside it.
+Each is written **once** per project and is never a per-slice artefact. The last three are deferred to first use, because each is dead code until the board asks for it — but Step 0 still checks for them, and a slice that finds one missing creates it before the slice, not alongside it.
 
 `health.py` holds the `/livez` and `/readyz` routes, and the slice that registers the **first** supervisor adds it, whatever that slice's type. The routes have nothing to report until a supervisor exists, and a supervisor without them is a projection that can die unobserved. See *Supervising projections* → *The `/livez` and `/readyz` routes*.
 
-The order below matters: `telemetry.py` imports `CommandSlice` from `command.py` and `CORRELATION_ID_KEY` from `metadata.py`, `application.py` imports `command_metadata` from `metadata.py` and `command_span` from `telemetry.py`, `main.py` imports `MetadataMiddleware` from `metadata.py`, and `view.py` imports `{ProjectName}App` from `application.py`. `metadata.py` imports nothing of the project's own, which is why it can come this early.
+The order below matters: `telemetry.py` imports `CommandSlice` from `command.py` and `CORRELATION_ID_KEY` from `metadata.py`, `application.py` imports `command_metadata` from `metadata.py` and `command_span` from `telemetry.py`, `main.py` imports `MetadataMiddleware` from `metadata.py`, and `view.py` imports `{ProjectName}App` from `application.py`. `metadata.py` imports nothing of the project's own, which is why it can come this early. When `auth.py` arrives later it imports its two key constants from `metadata.py` too, and the slices' `routes.py` modules import their `require_*` dependency from it.
 
 1. **Resolve every `TODO` placeholder in `pyproject.toml`.** `grep -n TODO pyproject.toml` to find them all: `[project] name`, `description`, `authors`; `packages = ["src/TODO"]` and `version-file = "src/TODO/_version.py"`; `[tool.coverage.paths] source`/`omit`; `[tool.ruff] exclude`; `[tool.ruff.lint.isort] known-first-party`; `pyrefly check src/TODO`; and the three `--cov=TODO` occurrences in the `unit-tests`/`acceptance-tests`/`integration-tests` scripts. Never create `src/snake_case({ProjectName})/_version.py` by hand — `hatch-vcs` generates it at build time and it's gitignored.
 2. **Create `src/snake_case({ProjectName})/__init__.py`** — copyright header plus a one-line module docstring naming the package.

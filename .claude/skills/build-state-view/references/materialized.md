@@ -522,6 +522,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel
 
+from snake_case({ProjectName}).auth import require_dog_owner_self  # the slice's actor rule
 from snake_case({ProjectName}).snake_case({Context}).snake_case({SliceName}).projection import (
     {SliceName}View,
 )
@@ -556,6 +557,9 @@ class {EntryName}Response(BaseModel):
 # *Addressing the view*.
 @router.get(
     "/dogs/{dog_id}/profile",
+    # Omit this line only if the board draws no actor for this slice —
+    # see `SKILL.md` → *The actor rule*.
+    dependencies=[Depends(require_dog_owner_self)],
     response_model=list[{EntryName}Response],
     operation_id="snake_case({SliceName})",
     responses={**VIEW_RESPONSES, status.HTTP_404_NOT_FOUND: NOT_FOUND_RESPONSE},
@@ -917,6 +921,15 @@ Slice-specific points:
   env vars, and no teardown beyond the `TestClient` `with` block. The route code
   exercised is identical to the Postgres deployment's, because it depends on the
   abstract `{SliceName}View`.
+- **A guarded view needs two more tests**: a **401** with no `Authorization`
+  header, and a **403** as the wrong actor — with the data seeded and the view
+  settled, so the test proves the rule refused the read rather than that there
+  was nothing to return. Assert `response.json()["detail"]` as well as the
+  status. For an owner-scoped view, add a third in which the *other* subject
+  reads their **own** account, gets 200, and sees none of this one's data:
+  that separates "the view is scoped by id" from "the rule refuses cross-account
+  reads". Headers come from the auth fixtures in
+  `tests/integration/conftest.py`; the `client` fixture stays anonymous.
 
 ---
 
