@@ -39,6 +39,28 @@ STUDENT_1 = "STU-2026-0001"
 STUDENT_2 = "STU-2026-0002"
 STUDENT_3 = "STU-2026-0003"
 
+# Fake OAuth2 tokens, matching the format course_subscriptions.auth.parse_token
+# expects: <principal_id>|<type>|<space-separated scopes>. A student's
+# principal id *is* their student id, which is what makes one token per
+# student enough to simulate them acting independently.
+COURSE_MANAGER = "MGR-2026-0001"
+REGISTRAR = "registrar"
+
+
+def manager_auth() -> dict[str, str]:
+    """Return the headers of the course manager."""
+    return {"Authorization": f"Bearer {COURSE_MANAGER}|user|courses:manage"}
+
+
+def student_auth(student_id: str) -> dict[str, str]:
+    """Return the headers of the given student."""
+    return {"Authorization": f"Bearer {student_id}|user|subscriptions:write"}
+
+
+def registrar_auth() -> dict[str, str]:
+    """Return the headers of the registrar's machine credential."""
+    return {"Authorization": f"Bearer {REGISTRAR}|service|registrations:write"}
+
 _FAILURES: list[str] = []
 _LAST_POSITION: int | None = None
 
@@ -82,6 +104,7 @@ def register_course(
             "title": f"Course {course_id}",
             "capacity": capacity,
         },
+        headers=manager_auth(),
     )
 
 
@@ -98,6 +121,7 @@ def register_student(
             "name": f"Student {student_id}",
             "course_limit": course_limit,
         },
+        headers=registrar_auth(),
     )
 
 
@@ -105,11 +129,26 @@ def subscribe(
     client: httpx2.Client,
     student_id: str,
     course_id: str,
+    as_student: str | None = None,
 ) -> httpx2.Response:
-    """Subscribe a student to a course."""
+    """
+    Subscribe a student to a course.
+
+    Args:
+        client: The HTTP client.
+        student_id: The account named in the path.
+        course_id: The course to subscribe to.
+        as_student: Whose token to present, when it is not the account owner's.
+            Only the impersonation checks pass this.
+
+    Returns:
+        The server's response.
+
+    """
     return client.post(
         f"/students/{student_id}/subscribe-to-course",
         json={"course_id": course_id},
+        headers=student_auth(as_student or student_id),
     )
 
 
@@ -117,11 +156,26 @@ def unsubscribe(
     client: httpx2.Client,
     student_id: str,
     course_id: str,
+    as_student: str | None = None,
 ) -> httpx2.Response:
-    """Unsubscribe a student from a course."""
+    """
+    Unsubscribe a student from a course.
+
+    Args:
+        client: The HTTP client.
+        student_id: The account named in the path.
+        course_id: The course to unsubscribe from.
+        as_student: Whose token to present, when it is not the account owner's.
+            Only the impersonation checks pass this.
+
+    Returns:
+        The server's response.
+
+    """
     return client.post(
         f"/students/{student_id}/unsubscribe-from-course",
         json={"course_id": course_id},
+        headers=student_auth(as_student or student_id),
     )
 
 
@@ -134,22 +188,33 @@ def change_capacity(
     return client.post(
         f"/courses/{course_id}/change-capacity",
         json={"capacity": capacity},
+        headers=manager_auth(),
     )
 
 
-def read_view(client: httpx2.Client, url: str) -> httpx2.Response:
+def read_view(
+    client: httpx2.Client,
+    url: str,
+    auth: dict[str, str],
+) -> httpx2.Response:
     """
     Read a view, waiting until it reflects the last command's position.
+
+    Args:
+        client: The HTTP client.
+        url: The view to read.
+        auth: The headers of the actor entitled to read it.
+
+    Returns:
+        The server's response, once the view has caught up.
 
     Raises:
         TimeoutError: If the view stays behind for longer than POLL_TIMEOUT.
 
     """
-    headers = (
-        {}
-        if _LAST_POSITION is None
-        else {POSITION_AT_LEAST_HEADER: str(_LAST_POSITION)}
-    )
+    headers = dict(auth)
+    if _LAST_POSITION is not None:
+        headers[POSITION_AT_LEAST_HEADER] = str(_LAST_POSITION)
     deadline = time.monotonic() + POLL_TIMEOUT
     while True:
         response = client.get(url, headers=headers)
@@ -162,6 +227,81 @@ def read_view(client: httpx2.Client, url: str) -> httpx2.Response:
             )
             raise TimeoutError(message)
         time.sleep(POLL_INTERVAL)
+
+
+def check_authorisation_rules(client: httpx2.Client) -> None:
+    """
+    Confirm the event model's actor rules hold on a live server.
+
+    The 403s are the point: each is a request that is otherwise entirely
+    well-formed and would have succeeded, refused only because of who sent
+    it. Reading the recorded events afterwards shows the same distinction
+    from the other side - every write names the principal behind it.
+
+    Args:
+        client: The HTTP client.
+
+    """
+    # authentication and authorisation: the rules the event model draws
+    expect(
+        client.post("/courses/register", json={"course_id": UNKNOWN_COURSE}),
+        401,
+        label="anonymous caller registers a course",
+    )
+    expect(
+        client.post(
+            "/courses/register",
+            json={
+                "course_id": UNKNOWN_COURSE,
+                "title": "Not yours",
+                "capacity": 1,
+            },
+            headers=student_auth(STUDENT_1),
+        ),
+        403,
+        "missing_scope",
+        label="student registers a course",
+    )
+    expect(
+        subscribe(client, STUDENT_1, COURSE_B, as_student=STUDENT_2),
+        403,
+        "not_your_account",
+        label="student 2 subscribes student 1 to a course",
+    )
+    expect(
+        unsubscribe(client, STUDENT_1, COURSE_A, as_student=STUDENT_2),
+        403,
+        "not_your_account",
+        label="student 2 unsubscribes student 1 from a course",
+    )
+    expect(
+        client.get(
+            f"/students/{STUDENT_1}/course-subscriptions",
+            headers=student_auth(STUDENT_2),
+        ),
+        403,
+        "not_your_account",
+        label="student 2 reads student 1's subscriptions",
+    )
+    expect(
+        client.post(
+            "/webhooks/student-registered",
+            json={
+                "student_id": "STU-2026-9999",
+                "name": "Impostor",
+                "course_limit": 1,
+            },
+            headers=student_auth(STUDENT_1),
+        ),
+        403,
+        "not_a_service",
+        label="student posts to the registrar webhook",
+    )
+    expect(
+        client.get("/course-catalogue", headers=student_auth(STUDENT_1)),
+        200,
+        label="student reads the course catalogue",
+    )
 
 
 def main() -> int:
@@ -203,7 +343,11 @@ def main() -> int:
         )
 
         # course_catalogue: initial listing
-        catalogue = read_view(client, "/course-catalogue").json()["courses"]
+        catalogue = read_view(
+            client,
+            "/course-catalogue",
+            manager_auth(),
+        ).json()["courses"]
         by_id = {entry["course_id"]: entry for entry in catalogue}
         assert by_id[COURSE_A]["capacity"] == 10  # noqa: S101
         assert by_id[COURSE_A]["number_of_subscriptions"] == 0  # noqa: S101
@@ -243,7 +387,11 @@ def main() -> int:
             label="student 2 subscribes to course A",
         )
 
-        catalogue = read_view(client, "/course-catalogue").json()["courses"]
+        catalogue = read_view(
+            client,
+            "/course-catalogue",
+            manager_auth(),
+        ).json()["courses"]
         by_id = {entry["course_id"]: entry for entry in catalogue}
         assert by_id[COURSE_A]["number_of_subscriptions"] == 2  # noqa: S101
         print("OK   course A now has 2 subscriptions")
@@ -318,13 +466,18 @@ def main() -> int:
             body = read_view(
                 client,
                 f"/students/{student_id}/course-subscriptions",
+                student_auth(student_id),
             ).json()
             assert body["subscription_count"] == len(expected_courses)  # noqa: S101
             assert body["courses"] == expected_courses  # noqa: S101
             print(f"OK   {student_id} subscriptions == {expected_courses}")
 
         # course_catalogue: final state after the capacity change and re-subscription
-        catalogue = read_view(client, "/course-catalogue").json()["courses"]
+        catalogue = read_view(
+            client,
+            "/course-catalogue",
+            manager_auth(),
+        ).json()["courses"]
         by_id = {entry["course_id"]: entry for entry in catalogue}
         assert by_id[COURSE_A]["capacity"] == 2  # noqa: S101
         assert by_id[COURSE_A]["number_of_subscriptions"] == 2  # noqa: S101
@@ -334,17 +487,24 @@ def main() -> int:
             "OK   final catalogue matches expected capacities and subscription counts",
         )
 
+        check_authorisation_rules(client)
+
         # request-schema validation
         expect(
             client.post(
                 "/courses/register",
                 json={"course_id": "EM-0000-001", "title": "No capacity"},
+                headers=manager_auth(),
             ),
             422,
             label="register course missing capacity field",
         )
         expect(
-            client.post(f"/students/{STUDENT_1}/subscribe-to-course", json={}),
+            client.post(
+                f"/students/{STUDENT_1}/subscribe-to-course",
+                json={},
+                headers=student_auth(STUDENT_1),
+            ),
             422,
             label="subscribe missing course_id field",
         )

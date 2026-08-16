@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 
 from course_subscriptions.application import CourseSubscriptionsApp, get_application
+from course_subscriptions.auth import require_student_self
 from course_subscriptions.command import CommandResponse
 from course_subscriptions.course_subscriptions.unsubscribe_student.slice import (
     UnsubscribeStudentSlice,
@@ -23,6 +24,7 @@ class UnsubscribeStudentRequest(BaseModel):
 
 @router.post(
     "/students/{student_id}/unsubscribe-from-course",
+    dependencies=[Depends(require_student_self)],
     status_code=status.HTTP_201_CREATED,
     response_model=CommandResponse,
     operation_id="unsubscribe_student",

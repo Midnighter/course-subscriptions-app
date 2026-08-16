@@ -11,11 +11,19 @@ from eventsourcing.domain import TaggedEvent
 from course_subscriptions.course_subscriptions.events import CourseRegistered
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from fastapi.testclient import TestClient
 
     from course_subscriptions.application import CourseSubscriptionsApp
 
 _COURSE_ID = "EM-2024-001"
+_STUDENT_ID = "STU-2026-0042"
+_BODY = {
+    "course_id": _COURSE_ID,
+    "title": "Intro to Event Modeling",
+    "capacity": 10,
+}
 
 
 @pytest.fixture
@@ -32,16 +40,12 @@ def course_registered(dcb_app: CourseSubscriptionsApp) -> CourseRegistered:
     return decision
 
 
-def test_register_course_returns_201(client: TestClient) -> None:
+def test_register_course_returns_201(
+    client: TestClient,
+    manager_auth: dict,
+) -> None:
     """Registering a new course returns HTTP 201."""
-    response = client.post(
-        "/courses/register",
-        json={
-            "course_id": _COURSE_ID,
-            "title": "Intro to Event Modeling",
-            "capacity": 10,
-        },
-    )
+    response = client.post("/courses/register", json=_BODY, headers=manager_auth)
     assert response.status_code == 201
     body = response.json()
     assert body["position"] is not None
@@ -50,22 +54,54 @@ def test_register_course_returns_201(client: TestClient) -> None:
 
 def test_register_course_already_registered_returns_422(
     client: TestClient,
+    manager_auth: dict,
     course_registered: CourseRegistered,  # noqa: ARG001
 ) -> None:
     """Registering an already-registered course id returns HTTP 422."""
-    response = client.post(
-        "/courses/register",
-        json={
-            "course_id": _COURSE_ID,
-            "title": "Intro to Event Modeling",
-            "capacity": 10,
-        },
-    )
+    response = client.post("/courses/register", json=_BODY, headers=manager_auth)
     assert response.status_code == 422
     assert response.json()["detail"] == "course_already_registered"
 
 
-def test_register_course_missing_field_returns_422(client: TestClient) -> None:
+def test_register_course_missing_field_returns_422(
+    client: TestClient,
+    manager_auth: dict,
+) -> None:
     """A request missing a required field returns HTTP 422."""
-    response = client.post("/courses/register", json={"course_id": _COURSE_ID})
+    response = client.post(
+        "/courses/register",
+        json={"course_id": _COURSE_ID},
+        headers=manager_auth,
+    )
     assert response.status_code == 422
+
+
+def test_register_course_without_a_token_returns_401(client: TestClient) -> None:
+    """
+    An anonymous caller cannot register a course.
+
+    A 401 rather than a 403, carrying the challenge that tells the client how
+    to authenticate: nobody has been identified, so nobody has been refused.
+    """
+    response = client.post("/courses/register", json=_BODY)
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == "Bearer"
+
+
+def test_register_course_as_a_student_returns_403(
+    client: TestClient,
+    student_auth: Callable[[str], dict],
+) -> None:
+    """
+    A student cannot register a course, whoever they are.
+
+    The board puts Register Course on a Course Manager screen; nothing on a
+    Student screen leads here.
+    """
+    response = client.post(
+        "/courses/register",
+        json=_BODY,
+        headers=student_auth(_STUDENT_ID),
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"] == "missing_scope"

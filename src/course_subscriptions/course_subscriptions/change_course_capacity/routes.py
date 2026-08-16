@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 
 from course_subscriptions.application import CourseSubscriptionsApp, get_application
+from course_subscriptions.auth import require_course_manager
 from course_subscriptions.command import CommandResponse
 from course_subscriptions.course_subscriptions.change_course_capacity.slice import (
     ChangeCourseCapacitySlice,
@@ -23,6 +24,7 @@ class ChangeCourseCapacityRequest(BaseModel):
 
 @router.post(
     "/courses/{course_id}/change-capacity",
+    dependencies=[Depends(require_course_manager)],
     status_code=status.HTTP_201_CREATED,
     response_model=CommandResponse,
     operation_id="change_course_capacity",

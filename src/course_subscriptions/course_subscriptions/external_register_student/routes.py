@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Response, status
 from pydantic import BaseModel
 
 from course_subscriptions.application import CourseSubscriptionsApp, get_application
+from course_subscriptions.auth import require_registrar
 from course_subscriptions.command import CommandResponse
 from course_subscriptions.course_subscriptions.external_register_student.slice import (
     ExternalRegisterStudentSlice,
@@ -28,6 +29,7 @@ class StudentRegisteredWebhook(BaseModel):
 # when this response goes out the student is not registered here yet.
 @router.post(
     "/webhooks/student-registered",
+    dependencies=[Depends(require_registrar)],
     status_code=status.HTTP_202_ACCEPTED,
     response_model=CommandResponse,
     operation_id="external_register_student",

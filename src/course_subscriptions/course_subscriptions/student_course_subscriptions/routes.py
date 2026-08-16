@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel
 
 from course_subscriptions.application import CourseSubscriptionsApp, get_application
+from course_subscriptions.auth import require_student_self
 from course_subscriptions.course_subscriptions.student_course_subscriptions.projection import (  # noqa: E501
     StudentCourseSubscriptionsView,
 )
@@ -32,6 +33,7 @@ class StudentCourseSubscriptionsResponse(BaseModel):
 
 @router.get(
     "/students/{student_id}/course-subscriptions",
+    dependencies=[Depends(require_student_self)],
     response_model=StudentCourseSubscriptionsResponse,
     operation_id="student_course_subscriptions",
     responses=VIEW_RESPONSES,

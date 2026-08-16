@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel
 
 from course_subscriptions.application import CourseSubscriptionsApp, get_application
+from course_subscriptions.auth import require_authenticated
 from course_subscriptions.course_subscriptions.course_catalogue.projection import (
     CourseCatalogueView,
 )
@@ -38,6 +39,7 @@ class CourseCatalogueResponse(BaseModel):
 
 @router.get(
     "/course-catalogue",
+    dependencies=[Depends(require_authenticated)],
     response_model=CourseCatalogueResponse,
     operation_id="course_catalogue",
     responses=VIEW_RESPONSES,

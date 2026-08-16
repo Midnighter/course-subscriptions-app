@@ -270,6 +270,13 @@
         "title": "ValidationError",
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "description": "A fake OAuth2 token: `<id>|<type>|<scopes>`.",
+        "scheme": "bearer",
+        "type": "http"
+      }
     }
   },
   "info": {
@@ -344,6 +351,11 @@
             }
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Course Catalogue",
         "tags": [
           "courses"
@@ -389,6 +401,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Register Course",
         "tags": [
           "courses"
@@ -445,6 +462,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Change Course Capacity",
         "tags": [
           "courses"
@@ -576,6 +598,11 @@
             }
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Student Course Subscriptions",
         "tags": [
           "students"
@@ -632,6 +659,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Subscribe Student",
         "tags": [
           "students"
@@ -688,6 +720,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Unsubscribe Student",
         "tags": [
           "students"
@@ -733,6 +770,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "External Register Student",
         "tags": [
           "webhooks"

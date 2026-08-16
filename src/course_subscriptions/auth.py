@@ -41,7 +41,16 @@ _CLAIM_COUNT = 3
 # that is a 401 rather than a 403 carries it.
 _BEARER_CHALLENGE = {"WWW-Authenticate": "Bearer"}
 
-_bearer = HTTPBearer(description="A fake OAuth2 token: `<id>|<type>|<scopes>`.")
+# `auto_error=False` so that a missing credential reaches `get_principal` and
+# is answered with a 401 like every other authentication failure. Left to
+# itself, `HTTPBearer` answers a missing header with a *403* - a long-standing
+# FastAPI wart that would tell an anonymous caller they had been identified and
+# refused, and would omit the `WWW-Authenticate` challenge that tells a client
+# how to try again.
+_bearer = HTTPBearer(
+    auto_error=False,
+    description="A fake OAuth2 token: `<id>|<type>|<scopes>`.",
+)
 
 
 class PrincipalType(StrEnum):
@@ -141,7 +150,7 @@ def parse_token(raw: str) -> Principal:
 
 
 async def get_principal(
-    credentials: Annotated[HTTPAuthorizationCredentials, Security(_bearer)],
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Security(_bearer)],
 ) -> AsyncIterator[Principal]:
     """
     Identify the caller and seed the metadata their events will carry.
@@ -159,12 +168,24 @@ async def get_principal(
     def` returning a value could not do.
 
     Args:
-        credentials: The bearer credential FastAPI extracted from the request.
+        credentials: The bearer credential FastAPI extracted from the request,
+            or None when the caller sent no `Authorization` header.
 
     Yields:
         The authenticated principal, for the duration of the request.
 
+    Raises:
+        HTTPException: 401, when the caller sent no credential at all.
+
     """
+    if credentials is None:
+        msg = "not_authenticated"
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=msg,
+            headers=_BEARER_CHALLENGE,
+        )
+
     principal = parse_token(credentials.credentials)
     with put_metadata_in_context(
         {

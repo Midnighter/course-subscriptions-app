@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 
 from course_subscriptions.application import CourseSubscriptionsApp, get_application
+from course_subscriptions.auth import require_course_manager
 from course_subscriptions.command import CommandResponse
 from course_subscriptions.course_subscriptions.register_course.slice import (
     RegisterCourseSlice,
@@ -25,6 +26,7 @@ class RegisterCourseRequest(BaseModel):
 
 @router.post(
     "/courses/register",
+    dependencies=[Depends(require_course_manager)],
     status_code=status.HTTP_201_CREATED,
     response_model=CommandResponse,
     operation_id="register_course",

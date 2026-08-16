@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 
 from course_subscriptions.application import CourseSubscriptionsApp, get_application
+from course_subscriptions.auth import require_student_self
 from course_subscriptions.command import CommandResponse
 from course_subscriptions.course_subscriptions.subscribe_student.slice import (
     SubscribeStudentSlice,
@@ -23,6 +24,7 @@ class SubscribeStudentRequest(BaseModel):
 
 @router.post(
     "/students/{student_id}/subscribe-to-course",
+    dependencies=[Depends(require_student_self)],
     status_code=status.HTTP_201_CREATED,
     response_model=CommandResponse,
     operation_id="subscribe_student",
