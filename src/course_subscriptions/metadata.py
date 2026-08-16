@@ -21,6 +21,14 @@ CORRELATION_ID_KEY = "correlation_id"
 CAUSATION_ID_KEY = "causation_id"
 CREATED_AT_KEY = "created_at"
 
+# Who caused the write. Seeded by the auth dependency in `auth.py`, which is
+# the only place that knows the caller - the same way `MetadataMiddleware`
+# below is the only place that knows the request. Both keys are absent on
+# events no principal authenticated: an automation's command has no request,
+# and `causation_id` already leads a reader back to the one that did.
+PRINCIPAL_ID_KEY = "principal_id"
+PRINCIPAL_TYPE_KEY = "principal_type"
+
 CORRELATION_ID_HEADER = "X-Correlation-ID"
 
 # A correlation id is stored in a `jsonb` column and echoed into logs and a
