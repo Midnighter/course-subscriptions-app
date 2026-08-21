@@ -35,6 +35,13 @@ repos:
         language: system
         pass_filenames: false
 
+      - id: hatch-architecture-check
+        name: Hatch architecture check
+        entry: hatch run architecture:check
+        language: system
+        types: [python]
+        pass_filenames: false
+
       - id: hatch-unit-tests
         name: Hatch unit tests
         entry: hatch run unit-tests:run

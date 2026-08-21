@@ -128,6 +128,17 @@ check-return-types = false
 check-yield-types = false
 exclude = "_version.py"
 
+[tool.importlinter]
+root_package = "course_subscriptions"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Vertical slices must be independent"
+type = "independence"
+modules = [
+    "course_subscriptions.*.slice.*",
+]
+
 ################################################################################
 # Hatch Environments
 ################################################################################
@@ -205,6 +216,13 @@ build = "mkdocs build {args:--clean --strict}"
 serve = "mkdocs serve {args}"
 deploy = "mike deploy {args}"
 openapi = '''python -c "import json, pathlib; from course_subscriptions.main import create_app; pathlib.Path('docs/openapi.json').write_text(json.dumps(create_app().openapi(), indent=2, sort_keys=True))"'''
+
+[tool.hatch.envs.architecture]
+description = """Test for architectural constraints."""
+extra-dependencies = ["import-linter"]
+
+[tool.hatch.envs.architecture.scripts]
+check = "lint-imports --show-timings"
 
 [tool.hatch.envs.unit-tests]
 description = """Run the unit tests."""
