@@ -11,7 +11,7 @@ from course_subscriptions.course_subscriptions.events import (
     ExternalStudentRegistered,
     StudentRegistered,
 )
-from course_subscriptions.course_subscriptions.slice.register_student.projection import (
+from course_subscriptions.course_subscriptions.slice.register_student.projection import (  # noqa: E501
     MAX_ATTEMPTS,
     POPORegisterStudentView,
     RegisterStudentEntry,

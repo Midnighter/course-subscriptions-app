@@ -7,7 +7,7 @@ import pytest
 from eventsourcing.errors import InfrastructureFactoryError
 from eventsourcing.utils import Environment
 
-from course_subscriptions.course_subscriptions.slice.register_student.projection import (
+from course_subscriptions.course_subscriptions.slice.register_student.projection import (  # noqa: E501
     POPORegisterStudentView,
     PostgresRegisterStudentView,
     RegisterStudentProjection,

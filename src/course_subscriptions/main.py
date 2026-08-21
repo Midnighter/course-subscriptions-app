@@ -23,13 +23,13 @@ from course_subscriptions.course_subscriptions.slice.external_register_student i
 from course_subscriptions.course_subscriptions.slice.register_course import (
     routes as register_course_routes,
 )
-from course_subscriptions.course_subscriptions.slice.register_student.projection import (
+from course_subscriptions.course_subscriptions.slice.register_student.projection import (  # noqa: E501
     create_runner as create_register_student_runner,
 )
-from course_subscriptions.course_subscriptions.slice.register_student.projection import (
+from course_subscriptions.course_subscriptions.slice.register_student.projection import (  # noqa: E501
     create_view as create_register_student_view,
 )
-from course_subscriptions.course_subscriptions.slice.student_course_subscriptions import (
+from course_subscriptions.course_subscriptions.slice.student_course_subscriptions import (  # noqa: E501
     routes as student_course_subscriptions_routes,
 )
 from course_subscriptions.course_subscriptions.slice.subscribe_student import (

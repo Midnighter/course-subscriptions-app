@@ -5,7 +5,7 @@ from eventsourcing.dcb.gwt import given
 from eventsourcing.domain import TaggedEvent
 
 from course_subscriptions.course_subscriptions.events import ExternalStudentRegistered
-from course_subscriptions.course_subscriptions.slice.external_register_student.slice import (
+from course_subscriptions.course_subscriptions.slice.external_register_student.slice import (  # noqa: E501
     ExternalRegisterStudentSlice,
 )
 

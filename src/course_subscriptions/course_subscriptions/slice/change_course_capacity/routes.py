@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from course_subscriptions.application import CourseSubscriptionsApp, get_application
 from course_subscriptions.auth import require_course_manager
 from course_subscriptions.command import CommandResponse
-from course_subscriptions.course_subscriptions.slice.change_course_capacity.slice import (
+from course_subscriptions.course_subscriptions.slice.change_course_capacity.slice import (  # noqa: E501
     ChangeCourseCapacitySlice,
 )
 

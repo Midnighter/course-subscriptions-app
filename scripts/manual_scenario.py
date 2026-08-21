@@ -61,6 +61,7 @@ def registrar_auth() -> dict[str, str]:
     """Return the headers of the registrar's machine credential."""
     return {"Authorization": f"Bearer {REGISTRAR}|service|registrations:write"}
 
+
 _FAILURES: list[str] = []
 _LAST_POSITION: int | None = None
 

@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from course_subscriptions.application import CourseSubscriptionsApp, get_application
 from course_subscriptions.auth import require_authenticated
-from course_subscriptions.course_subscriptions.slice.course_catalogue.projection import (
+from course_subscriptions.course_subscriptions.slice.course_catalogue.projection import (  # noqa: E501
     CourseCatalogueView,
 )
 from course_subscriptions.view import (

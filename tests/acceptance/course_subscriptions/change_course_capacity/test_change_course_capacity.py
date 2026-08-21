@@ -11,7 +11,7 @@ from course_subscriptions.course_subscriptions.events import (
     StudentSubscribed,
     StudentUnsubscribed,
 )
-from course_subscriptions.course_subscriptions.slice.change_course_capacity.slice import (
+from course_subscriptions.course_subscriptions.slice.change_course_capacity.slice import (  # noqa: E501
     ChangeCourseCapacitySlice,
 )
 
