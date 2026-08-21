@@ -11,31 +11,31 @@ from typing import TYPE_CHECKING
 from fastapi import FastAPI
 
 from course_subscriptions.application import CourseSubscriptionsApp
-from course_subscriptions.course_subscriptions.change_course_capacity import (
+from course_subscriptions.course_subscriptions.slice.change_course_capacity import (
     routes as change_course_capacity_routes,
 )
-from course_subscriptions.course_subscriptions.course_catalogue import (
+from course_subscriptions.course_subscriptions.slice.course_catalogue import (
     routes as course_catalogue_routes,
 )
-from course_subscriptions.course_subscriptions.external_register_student import (
+from course_subscriptions.course_subscriptions.slice.external_register_student import (
     routes as external_register_student_routes,
 )
-from course_subscriptions.course_subscriptions.register_course import (
+from course_subscriptions.course_subscriptions.slice.register_course import (
     routes as register_course_routes,
 )
-from course_subscriptions.course_subscriptions.register_student.projection import (
+from course_subscriptions.course_subscriptions.slice.register_student.projection import (
     create_runner as create_register_student_runner,
 )
-from course_subscriptions.course_subscriptions.register_student.projection import (
+from course_subscriptions.course_subscriptions.slice.register_student.projection import (
     create_view as create_register_student_view,
 )
-from course_subscriptions.course_subscriptions.student_course_subscriptions import (
+from course_subscriptions.course_subscriptions.slice.student_course_subscriptions import (
     routes as student_course_subscriptions_routes,
 )
-from course_subscriptions.course_subscriptions.subscribe_student import (
+from course_subscriptions.course_subscriptions.slice.subscribe_student import (
     routes as subscribe_student_routes,
 )
-from course_subscriptions.course_subscriptions.unsubscribe_student import (
+from course_subscriptions.course_subscriptions.slice.unsubscribe_student import (
     routes as unsubscribe_student_routes,
 )
 from course_subscriptions.health import router as health_router
@@ -52,6 +52,7 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger("uvicorn.error")
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[dict]:

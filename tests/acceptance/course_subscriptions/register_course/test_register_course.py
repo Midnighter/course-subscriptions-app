@@ -6,7 +6,7 @@ from eventsourcing.dcb.gwt import given
 from eventsourcing.domain import TaggedEvent
 
 from course_subscriptions.course_subscriptions.events import CourseRegistered
-from course_subscriptions.course_subscriptions.register_course.slice import (
+from course_subscriptions.course_subscriptions.slice.register_course.slice import (
     RegisterCourseSlice,
 )
 

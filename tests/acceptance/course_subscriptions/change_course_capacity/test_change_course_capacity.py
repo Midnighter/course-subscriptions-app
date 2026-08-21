@@ -5,14 +5,14 @@ import pytest
 from eventsourcing.dcb.gwt import given
 from eventsourcing.domain import TaggedEvent
 
-from course_subscriptions.course_subscriptions.change_course_capacity.slice import (
-    ChangeCourseCapacitySlice,
-)
 from course_subscriptions.course_subscriptions.events import (
     CourseCapacityChanged,
     CourseRegistered,
     StudentSubscribed,
     StudentUnsubscribed,
+)
+from course_subscriptions.course_subscriptions.slice.change_course_capacity.slice import (
+    ChangeCourseCapacitySlice,
 )
 
 _COURSE_ID = "EM-2024-001"

@@ -4,14 +4,14 @@
 from eventsourcing.dcb.gwt import given
 from eventsourcing.domain import TaggedEvent
 
-from course_subscriptions.course_subscriptions.course_catalogue.projection import (
-    CourseCatalogueView,
-)
 from course_subscriptions.course_subscriptions.events import (
     CourseCapacityChanged,
     CourseRegistered,
     StudentSubscribed,
     StudentUnsubscribed,
+)
+from course_subscriptions.course_subscriptions.slice.course_catalogue.projection import (
+    CourseCatalogueView,
 )
 
 _COURSE_ID = "EM-2024-001"

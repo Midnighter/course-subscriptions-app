@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from course_subscriptions.application import CourseSubscriptionsApp, get_application
 from course_subscriptions.auth import require_registrar
 from course_subscriptions.command import CommandResponse
-from course_subscriptions.course_subscriptions.external_register_student.slice import (
+from course_subscriptions.course_subscriptions.slice.external_register_student.slice import (
     ExternalRegisterStudentSlice,
 )
 

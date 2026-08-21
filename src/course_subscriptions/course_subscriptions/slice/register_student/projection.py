@@ -24,7 +24,7 @@ from course_subscriptions.course_subscriptions.events import (
     ExternalStudentRegistered,
     StudentRegistered,
 )
-from course_subscriptions.course_subscriptions.register_student.slice import (
+from course_subscriptions.course_subscriptions.slice.register_student.slice import (
     RegisterStudentSlice,
 )
 from course_subscriptions.metadata import CAUSATION_ID_KEY, CORRELATION_ID_KEY
@@ -386,8 +386,7 @@ class RegisterStudentProjection(Projection[RegisterStudentView, TaggedEvent[Deci
                 # forever, falsely signalling outstanding work.
                 self.view.discard_entry(entry.student_id)
                 logger.info(
-                    "student %s already registered; discarding the "
-                    "outstanding entry",
+                    "student %s already registered; discarding the outstanding entry",
                     entry.student_id,
                 )
             else:

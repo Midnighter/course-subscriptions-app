@@ -10,7 +10,7 @@ from course_subscriptions.course_subscriptions.events import (
     StudentSubscribed,
     StudentUnsubscribed,
 )
-from course_subscriptions.course_subscriptions.unsubscribe_student.slice import (
+from course_subscriptions.course_subscriptions.slice.unsubscribe_student.slice import (
     UnsubscribeStudentSlice,
 )
 

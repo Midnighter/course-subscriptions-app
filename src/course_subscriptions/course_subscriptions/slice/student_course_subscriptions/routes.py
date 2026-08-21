@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from course_subscriptions.application import CourseSubscriptionsApp, get_application
 from course_subscriptions.auth import require_student_self
-from course_subscriptions.course_subscriptions.student_course_subscriptions.projection import (  # noqa: E501
+from course_subscriptions.course_subscriptions.slice.student_course_subscriptions.projection import (  # noqa: E501
     StudentCourseSubscriptionsView,
 )
 from course_subscriptions.view import (

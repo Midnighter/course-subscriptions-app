@@ -1,5 +1,5 @@
 # Copyright 2026 Moritz E. Beber
-"""Provide the route for the Subscribe Student command."""
+"""Provide the route for the Unsubscribe Student command."""
 
 from typing import Annotated
 
@@ -9,38 +9,38 @@ from pydantic import BaseModel
 from course_subscriptions.application import CourseSubscriptionsApp, get_application
 from course_subscriptions.auth import require_student_self
 from course_subscriptions.command import CommandResponse
-from course_subscriptions.course_subscriptions.subscribe_student.slice import (
-    SubscribeStudentSlice,
+from course_subscriptions.course_subscriptions.slice.unsubscribe_student.slice import (
+    UnsubscribeStudentSlice,
 )
 
 router = APIRouter(tags=["students"])
 
 
-class SubscribeStudentRequest(BaseModel):
-    """Request body for the Subscribe Student command."""
+class UnsubscribeStudentRequest(BaseModel):
+    """Request body for the Unsubscribe Student command."""
 
     course_id: str
 
 
 @router.post(
-    "/students/{student_id}/subscribe-to-course",
+    "/students/{student_id}/unsubscribe-from-course",
     dependencies=[Depends(require_student_self)],
     status_code=status.HTTP_201_CREATED,
     response_model=CommandResponse,
-    operation_id="subscribe_student",
+    operation_id="unsubscribe_student",
     responses={
         status.HTTP_204_NO_CONTENT: {"description": "The command recorded nothing."},
     },
 )
-async def subscribe_student(
+async def unsubscribe_student(
     student_id: str,
-    body: SubscribeStudentRequest,
+    body: UnsubscribeStudentRequest,
     app: Annotated[CourseSubscriptionsApp, Depends(get_application)],
 ) -> CommandResponse | Response:
-    """Subscribe a student to a course, subject to capacity and student limits."""
+    """Unsubscribe a student from a course they are currently subscribed to."""
     try:
         slice_ = app.do(
-            SubscribeStudentSlice(student_id=student_id, **body.model_dump()),
+            UnsubscribeStudentSlice(student_id=student_id, **body.model_dump()),
         )
     except ValueError as exc:
         raise HTTPException(

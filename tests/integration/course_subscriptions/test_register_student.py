@@ -14,7 +14,7 @@ from course_subscriptions.course_subscriptions.events import (
     ExternalStudentRegistered,
     StudentRegistered,
 )
-from course_subscriptions.course_subscriptions.register_student.projection import (
+from course_subscriptions.course_subscriptions.slice.register_student.projection import (
     RegisterStudentEntry,
     create_runner,
     create_view,
@@ -23,7 +23,7 @@ from course_subscriptions.course_subscriptions.register_student.projection impor
 if TYPE_CHECKING:
     from fastapi.testclient import TestClient
 
-    from course_subscriptions.course_subscriptions.register_student.projection import (
+    from course_subscriptions.course_subscriptions.slice.register_student.projection import (
         RegisterStudentView,
     )
 

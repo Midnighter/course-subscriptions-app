@@ -14,7 +14,7 @@ from eventsourcing.utils import get_topic
 
 from course_subscriptions.application import CourseSubscriptionsApp
 from course_subscriptions.course_subscriptions.events import ExternalStudentRegistered
-from course_subscriptions.course_subscriptions.student_course_subscriptions.projection import (  # noqa: E501
+from course_subscriptions.course_subscriptions.slice.student_course_subscriptions.projection import (  # noqa: E501
     StudentCourseSubscriptionsView,
 )
 from course_subscriptions.projection import (

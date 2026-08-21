@@ -9,7 +9,7 @@ from course_subscriptions.course_subscriptions.events import (
     StudentSubscribed,
     StudentUnsubscribed,
 )
-from course_subscriptions.course_subscriptions.student_course_subscriptions.projection import (  # noqa: E501
+from course_subscriptions.course_subscriptions.slice.student_course_subscriptions.projection import (  # noqa: E501
     StudentCourseSubscriptionsView,
 )
 
