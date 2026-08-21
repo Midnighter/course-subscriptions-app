@@ -133,11 +133,27 @@ root_package = "course_subscriptions"
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
-name = "Vertical slices must be independent"
+name = "Vertical slices must be strictly independent."
 type = "independence"
 modules = [
     "course_subscriptions.*.slice.*",
 ]
+
+[[tool.importlinter.contracts]]
+name = "Imperative shell may depend on functional core, but not vice versa."
+type = "layers"
+layers = [
+    "health : main",
+    "course_subscriptions",
+]
+containers = [
+    "course_subscriptions",
+]
+
+[[tool.importlinter.contracts]]
+name = "Minimal acyclic siblings contract"
+type = "acyclic_siblings"
+ancestors = ["course_subscriptions"]
 
 ################################################################################
 # Hatch Environments
